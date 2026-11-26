@@ -39,7 +39,7 @@ function makeRemote() {
   const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
   const chk = (r) => { if (r.error) throw r.error; return r; };
   return {
-    mode: "remote",
+    mode: "remote", _sb: sb,
     async load() {
       const [t, m] = await Promise.all([sb.from("dg_tasks").select("*").order("created_at"), sb.from("dg_members").select("*")]);
       chk(t); chk(m);
@@ -332,7 +332,7 @@ function openSay() { enterWalk(); }
 function closeSay(keepFocus) { exitWalk(keepFocus); }
 function addChat(m) {
   if (S.chat.some((c) => c.id === m.id)) return;
-  S.chat.push(m); S.chat.sort((a, b) => (typeof a.id === "number" && typeof b.id === "number") ? a.id - b.id : String(a.created_at).localeCompare(String(b.created_at))); if (S.chat.length > 1000) S.chat = S.chat.slice(-1000);
+  S.chat.push(m); S.chat.sort(byTime); if (S.chat.length > 1000) S.chat = S.chat.slice(-1000);
   if (m.kind === "lunch") {
     const fresh = Date.now() - new Date(m.created_at).getTime() < 60000, prev = S.lunch[m.member];
     if (fresh && (!prev || new Date(prev.at) <= new Date(m.created_at))) {
@@ -715,10 +715,47 @@ function eventText(x) {
   return null; // 일반 채팅
 }
 let joinedAt = null, leaveSent = false;
+const byTime = (a, b) => new Date(a.created_at) - new Date(b.created_at) || ((typeof a.id === "number" && typeof b.id === "number") ? a.id - b.id : 0);
+/* 그 사람의 마지막 입장/퇴장 기록 */
+async function lastPresence(member) {
+  if (store.mode === "remote") {
+    const sb = store._sb; const r = await sb.from("dg_chat").select("kind,created_at").eq("member", member).in("kind", ["join", "leave"]).order("id", { ascending: false }).limit(1);
+    return r.error ? undefined : (r.data[0] || null);
+  }
+  const l = S.chat.filter((x) => x.member === member && (x.kind === "join" || x.kind === "leave")); return l[l.length - 1] || null;
+}
+/* 안전장치 1: 열려 있는 동안 20초마다 "아직 있어요" 시각을 이 브라우저에 적어 둬요.
+   창이 갑자기 닫혀 퇴장 기록이 못 갔으면, 다음에 들어올 때 그 시각으로 퇴장을 채워 넣어요. */
+setInterval(() => { if (S.me && joinedAt) { try { localStorage.setItem("dg-lastseen", JSON.stringify({ me: S.me, t: Date.now(), since: joinedAt })); } catch (e) {} } }, 20000);
 async function logJoin() {
   if (!S.me || joinedAt) return;
   joinedAt = Date.now(); leaveSent = false;
+  try {
+    const last = await lastPresence(S.me);
+    if (last && last.kind === "join") {
+      let seen = null; try { seen = JSON.parse(localStorage.getItem("dg-lastseen")); } catch (e) {}
+      const jt = new Date(last.created_at).getTime(), t = seen && seen.me === S.me && seen.t > jt ? seen.t : null;
+      if (t) { const row = await store.sendChat({ member: S.me, text: durText(t - jt) + " 머물렀어요", kind: "leave", created_at: new Date(t).toISOString() }); if (row) addChat(row); }
+    }
+  } catch (e) {}
   try { const row = await store.sendChat({ member: S.me, text: "입장", kind: "join" }); if (row) addChat(row); } catch (e) {}
+}
+/* 안전장치 2: 동료가 마을에서 사라지면, 20초 뒤에도 안 돌아왔고 퇴장 기록이 없을 때 남아 있는 사람이 대신 적어요 */
+const leaveWatch = {};
+function watchLeave(id) {
+  if (store.mode !== "remote") return;
+  clearTimeout(leaveWatch[id]);
+  const goneAt = Date.now();
+  leaveWatch[id] = setTimeout(async () => {
+    if (S.online.has(id) || !S.online.has(S.me)) return; // 내 연결이 끊긴 거라면 남을 퇴장 처리하지 않아요
+    try {
+      const last = await lastPresence(id);
+      if (!last || last.kind !== "join" || S.online.has(id)) return;
+      const jt = new Date(last.created_at).getTime(); if (goneAt - jt < 5000) return;
+      const row = await store.sendChat({ member: id, text: durText(goneAt - jt) + " 머물렀어요", kind: "leave", created_at: new Date(goneAt).toISOString() });
+      if (row) addChat(row);
+    } catch (e) {}
+  }, 20000 + Math.random() * 6000); // 여러 명이 동시에 적지 않게 조금씩 다르게 기다려요
 }
 /* 창을 닫을 때: 페이지가 사라져도 끝까지 보내지도록 keepalive로 직접 보내요 */
 async function logLeave(wait) {
@@ -1139,7 +1176,7 @@ document.addEventListener("click", async (e) => {
   else if (a === "decor") startDecor();
   else if (a === "cancelPick") { S.pickSkill = null; renderCard(); }
   else if (a === "openLog") { if (S.say) exitWalk(true); if (S.card === "log") closeCard(); else { S.focusLog = true; openCard("log"); } }
-  else if (a === "moreLog") { const nums = S.chat.map((x) => x.id).filter((x) => typeof x === "number"); const more = nums.length ? await store.chatBefore(Math.min(...nums)) : []; if (!more.length) S.chatEnd = true; more.forEach((x) => { if (!S.chat.some((y) => y.id === x.id)) S.chat.push(x); }); S.chat.sort((p, q) => p.id - q.id); renderCard._k = ""; renderCard(); const lg = document.querySelector(".chatlog"); if (lg) lg.scrollTop = 0; }
+  else if (a === "moreLog") { const nums = S.chat.map((x) => x.id).filter((x) => typeof x === "number"); const more = nums.length ? await store.chatBefore(Math.min(...nums)) : []; if (!more.length) S.chatEnd = true; more.forEach((x) => { if (!S.chat.some((y) => y.id === x.id)) S.chat.push(x); }); S.chat.sort(byTime); renderCard._k = ""; renderCard(); const lg = document.querySelector(".chatlog"); if (lg) lg.scrollTop = 0; }
   else if (a === "cancelDecor") { S.edit = null; renderCard(); }
   else if (a === "saveRoom") { const L = S.edit.layout; S.edit = null; S.rooms = Object.assign({}, S.rooms, { [S.me]: L }); renderCard(); try { await store.saveRoom(S.me, L); toast("방을 저장했어요. 동료들이 놀러 오면 볼 수 있어요!"); } catch (err) { toast("방을 저장하지 못했어요. setup.sql을 다시 실행했는지 확인해 주세요."); } }
   else if (a === "myroom") { if (!S.me) { openCard("who"); return; } toggleCard({ type: "room", id: S.me }); }
@@ -1235,7 +1272,9 @@ function startLive() {
   if (store.mode === "remote") { setInterval(pollChat, 6000); setInterval(() => reload(), 20000); }
   store.live({
     presence: (list) => {
+      const before = S.online || new Set();
       S.online = new Set(list.map((p) => p.id));
+      before.forEach((id) => { if (!S.online.has(id) && id !== S.me) watchLeave(id); }); // 사라진 동료 → 잠시 뒤에도 없으면 퇴장 기록
       list.forEach((p) => { if (p.id !== S.me && POS[p.id] && p.f !== undefined) POS[p.id].f = (typeof p.f === "number") ? p.f : null; });
       paintAll();
     },
