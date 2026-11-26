@@ -226,3 +226,28 @@ html.web{background:linear-gradient(#7fa6d6 0%,#b9d3ee 62%,#e6eef3 100%)}html.we
 html.web body::before{content:"";position:fixed;left:-10%;right:-10%;bottom:0;height:150px;z-index:-1;background:radial-gradient(ellipse at 25% 100%,#8fbf73 0 60%,transparent 61%),radial-gradient(ellipse at 80% 100%,#a3cc84 0 55%,transparent 56%);pointer-events:none}
 html.web body::after{content:"";position:fixed;left:0;right:0;bottom:0;height:14px;z-index:-1;background:#6f9e55;pointer-events:none}
 html.web .ground{left:0!important;width:100%!important;border-radius:0}
+
+/* 홍보영상팀 마을 (웹 배경, village.js) — 1칸 = var(--px) */
+#village{position:fixed;inset:0;z-index:-1;pointer-events:none;--px:clamp(1.3px,.22vw,3.4px);--base:min(128px,22vh)}
+#village svg{display:block;width:calc(var(--w) * var(--px));height:calc(var(--h) * var(--px));overflow:visible}
+#village .vhill{position:absolute;left:-6%;right:-6%;bottom:0;height:var(--base);background:#9FCA7F;border-radius:50% 50% 0 0/38px 38px 0 0;box-shadow:inset 0 4px 0 #B5D995}
+#village .vrow{position:absolute;left:0;right:0;bottom:calc(var(--base) - 6px);display:flex;justify-content:space-evenly;align-items:flex-end;padding:0 1vw}
+#village .vhouse{display:flex;flex-direction:column;align-items:center;gap:calc(var(--px) * 2)}
+#village .vart{filter:drop-shadow(0 calc(var(--px) * 1) 0 rgba(59,42,30,.18))}
+#village .vlabel{font-family:var(--pixel);font-size:clamp(10px,.85vw,13px);white-space:nowrap;background:#C98D4F;color:#FFF4DC;padding:1px 7px;border:2px solid var(--wood-d);border-radius:3px;box-shadow:0 2px 0 rgba(59,42,30,.25);text-shadow:1px 1px 0 var(--wood-d)}
+#village .vtree{margin-bottom:-1px}
+#village .vsign{position:relative;display:flex;flex-direction:column;align-items:center;margin-bottom:calc(var(--px) * 9);padding:calc(var(--px) * 2.5) calc(var(--px) * 5);background:#D89A58;border:3px solid var(--wood-d);border-radius:3px;box-shadow:inset 0 -3px 0 #B97C3E,inset 0 3px 0 #E8B577,0 3px 0 rgba(59,42,30,.25)}
+#village .vsign::before,#village .vsign::after{content:"";position:absolute;top:100%;width:calc(var(--px) * 3);height:calc(var(--px) * 9 + 3px);background:var(--wood);border:2px solid var(--wood-d);border-top:0}
+#village .vsign::before{left:18%}#village .vsign::after{right:18%}
+#village .vsign b{font-family:var(--pixel);font-weight:400;font-size:clamp(13px,1.25vw,19px);color:#FFF4DC;white-space:nowrap;text-shadow:2px 2px 0 var(--wood-d)}
+#village .vsign span{font-family:var(--pixel);font-size:clamp(8px,.6vw,10px);letter-spacing:.15em;color:var(--wood-d)}
+#village .vsky i{position:absolute;left:0;opacity:.95;animation:drift linear infinite}
+#village .vsky .c0{top:9%;--px:3px;animation-duration:150s;animation-delay:-20s}
+#village .vsky .c1{top:20%;--px:2px;animation-duration:210s;animation-delay:-120s}
+#village .vsky .c2{top:5%;--px:2.5px;animation-duration:180s;animation-delay:-90s}
+#village .vsky .c3{top:31%;--px:1.6px;animation-duration:260s;animation-delay:-200s}
+@keyframes drift{from{transform:translateX(-120px)}to{transform:translateX(100vw)}}
+#village .tw0{animation:twinkle 1.4s steps(1) infinite}#village .tw1{animation:twinkle 1.4s steps(1) infinite .7s}
+@keyframes twinkle{50%{fill:#FFF4DC}}
+@media (max-width:700px){#village .vtree,#village .vsign span,#village .vlabel{display:none}}
+@media (prefers-reduced-motion:reduce){#village .vsky i,#village .tw0,#village .tw1{animation:none}#village .vsky .c0{transform:translateX(12vw)}#village .vsky .c1{transform:translateX(48vw)}#village .vsky .c2{transform:translateX(70vw)}#village .vsky .c3{transform:translateX(30vw)}}
