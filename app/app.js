@@ -119,7 +119,7 @@ function buildRow() {
     const el = document.createElement("div");
     el.className = "pal hit"; el.dataset.pal = m.id; el.tabIndex = 0;
     el.setAttribute("role", "button"); el.setAttribute("aria-label", m.name + " 님 할 일 보기");
-    el.innerHTML = '<span class="tag"></span><span class="bars" aria-hidden="true"><i class="hp"><b></b><em></em></i><i class="mp"><b></b></i></span><img class="spr" alt="" src="' + IMG(m.id) + '">';
+    el.innerHTML = '<span class="tag"></span><span class="bars" aria-hidden="true"><i class="hp"><b></b><em></em></i><i class="mp"><b></b></i></span>' + avatarHTML(m.id, {});
     el.addEventListener("mouseenter", () => { S.hover = m.id; paintBubble(m.id); });
     el.addEventListener("mouseleave", () => { if (S.hover === m.id) S.hover = null; paintBubble(m.id); });
     row.appendChild(el); PAL[m.id] = el;
@@ -144,9 +144,33 @@ function buildRow() {
   row.appendChild(f);
   const ctrl = document.createElement("div");
   ctrl.className = "ctrl hit"; ctrl.id = "ctrl";
-  ctrl.innerHTML = '<button type="button" data-act="myroom">🏠 내 방</button><button type="button" data-act="openLog">💬 채팅</button>' + (WEB ? '<button type="button" data-act="openWho">👤 사람</button>' : '<span class="ctrlrow"><button type="button" data-act="minimize" aria-label="최소화" title="최소화">–</button><button type="button" class="quit" data-act="askQuit" aria-label="종료" title="종료">✕</button></span>');
+  ctrl.innerHTML = '<button type="button" data-act="myroom">🏠 내 방</button><button type="button" data-act="openShop">👕 옷가게</button>' + (WEB ? '<button type="button" data-act="openWho">👤 사람</button>' : '<span class="ctrlrow"><button type="button" data-act="minimize" aria-label="최소화" title="최소화">–</button><button type="button" class="quit" data-act="askQuit" aria-label="종료" title="종료">✕</button></span>');
   row.appendChild(ctrl);
+  buildChatBar();
   placeRow();
+}
+/* 땅 아래 고정 채팅창 — 보내면 내 캐릭터 머리 위에 말풍선만 떠요 */
+const CHATH = 44;
+function buildChatBar() {
+  if (document.getElementById("chatbar")) return;
+  const f = document.createElement("form");
+  f.id = "chatbar"; f.className = "chatbar hit"; f.dataset.form = "bar"; f.autocomplete = "off";
+  f.innerHTML = '<span class="who" id="barWho"></span><label for="sayIn" class="sr">메시지</label><input id="sayIn" maxlength="200" autocomplete="off"><button type="submit" class="send">말하기</button><button type="button" class="log" data-act="openLog" title="채팅 기록 보기">💬 기록</button>';
+  const inp = f.querySelector("input");
+  f.addEventListener("pointerdown", () => D.wantFocus(true));
+  inp.addEventListener("focus", () => {
+    if (!S.me) { inp.blur(); openCard("who"); return; }
+    if (S.mini) setMini(false);
+    S.walk = true; S.say = true; PAL[S.me].style.transform = "none";
+  });
+  inp.addEventListener("blur", () => { if (S.say) exitWalk(true); });
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); exitWalk(); return; }
+    if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !inp.value) { e.preventDefault(); walkKeys.add(e.key); }
+  });
+  inp.addEventListener("keyup", (e) => walkKeys.delete(e.key));
+  document.body.appendChild(f);
+  paintSay();
 }
 function setMini(on) {
   S.mini = on; document.body.classList.toggle("mini", on);
@@ -161,6 +185,7 @@ function placeRow() {
   MEMBERS.forEach((m, i) => { const el = PAL[m.id]; if (el) el.style.left = Math.round(Math.max(42, Math.min(window.innerWidth - 42, palX(m.id, i))) - 42) + "px"; });
   const fire = document.getElementById("fire"), fx = Math.round(rowLeft() + MEMBERS.length * SLOT);
   const gr = document.getElementById("ground"); if (gr) { gr.style.left = Math.round(rowLeft() - 16) + "px"; gr.style.width = (ROWW + 32) + "px"; }
+  const cb = document.getElementById("chatbar"); if (cb) { cb.style.left = Math.round(rowLeft() - 16) + "px"; cb.style.width = (ROWW + 32) + "px"; }
   if (fire) fire.style.left = fx + "px";
   const ctrl = document.getElementById("ctrl"); if (ctrl) ctrl.style.left = (fx + FIREW + 2) + "px";
   const c = document.querySelector(".card"); if (c) c.style.right = Math.max(8, S.off) + "px";
@@ -188,6 +213,8 @@ function paintPal(id) {
   if (ratio < 0.3 && !sleep && !sw) { sw = document.createElement("span"); sw.className = "sweat"; sw.textContent = "💦"; el.appendChild(sw); }
   if ((ratio >= 0.3 || sleep) && sw) sw.remove();
   if (mpb) mpb.style.width = Math.round(st.mp / st.mpMax * 100) + "%";
+  const wear = closetOf(id).wear, wk = JSON.stringify(wear);
+  if (el._wk !== wk) { el._wk = wk; el.querySelector(".ol.back").innerHTML = outfitSvg(id, wear, "back"); el.querySelector(".ol.front").innerHTML = outfitSvg(id, wear, "front"); }
   let zz = el.querySelector(".zz");
   if (sleep && !zz) { zz = document.createElement("span"); zz.className = "zz"; zz.textContent = "z z"; el.appendChild(zz); }
   if (!sleep && zz) zz.remove();
@@ -202,11 +229,10 @@ function statusLine(id) {
 function paintBubble(id) {
   const el = PAL[id]; if (!el) return;
   const b = S.bubbles[id], m = byId(id);
-  if (S.say && id === S.me && !(b && b.until > Date.now())) { const o = el.querySelector(".bubble"); if (o) o.remove(); el._bk = ""; return; }
   let html = null, soft = false;
   if (b && b.until > Date.now()) html = esc(b.text);
   else if (S.hover === id) { soft = true; const lv = levelInfo(xpOf(id)).lv; const st = statsOf(id); html = "<b>" + esc(m.name) + " · " + esc(titleOf(m, lv, S.routes[id])) + (asleep(id) ? " · 자리 비움" : "") + "</b>" + esc(statusLine(id)) + '<span class="statline">❤ ' + st.hp + "/" + st.hpMax + (st.hp / st.hpMax < 0.3 ? ' <i>지쳤어요</i>' : "") + " · 💧 " + st.mp + "/" + st.mpMax + "</span>"; }
-  const cls = "bubble" + (soft ? " soft" : "") + (S.say && id === S.me ? " up" : ""), key = html ? cls + "|" + html : "";
+  const cls = "bubble" + (soft ? " soft" : ""), key = html ? cls + "|" + html : "";
   if (el._bk === key && (key === "" || el.querySelector(".bubble"))) return; // 같은 말풍선이면 그대로 둬요
   const old2 = el.querySelector(".bubble"); if (old2) old2.remove();
   el._bk = key;
@@ -237,17 +263,18 @@ setInterval(() => { const now = Date.now(); Object.keys(S.bubbles).forEach((id) 
 /* ---------- 방향키로 걷기 ---------- */
 const walkKeys = new Set();
 let lastMoveSend = 0, saveT = null, wasMoving = false;
-/* 내 캐릭터를 클릭하면: 말하기 입력칸이 열리고, 입력칸이 비어 있을 때 ← → 로 걸어요 */
+/* 아래 채팅창에 커서가 있고 비어 있을 때 ← → 로 걸어요 */
 function enterWalk() {
   if (!S.me) { openCard("who"); return; }
   if (S.mini) setMini(false);
-  S.walk = true; S.say = true; PAL[S.me].style.transform = "none";
-  paintBubble(S.me); paintSay();
+  D.wantFocus(true);
+  const i = document.getElementById("sayIn"); if (i) { i.focus(); setTimeout(() => i.focus(), 30); }
 }
 function exitWalk(keepFocus) {
   if (!S.walk && !S.say) return;
   S.walk = false; S.say = false; walkKeys.clear(); if (S.me) PAL[S.me].classList.remove("walk", "stepping");
-  paintSay(); if (S.me) paintBubble(S.me); store.retrack();
+  const i = document.getElementById("sayIn"); if (i && document.activeElement === i) i.blur();
+  if (store) store.retrack();
   if (!keepFocus && !S.card) D.wantFocus(false);
 }
 function goHome() {
@@ -279,26 +306,11 @@ requestAnimationFrame(walkLoop);
 
 /* ---------- 말풍선 채팅 ---------- */
 function paintSay() {
-  Object.values(PAL).forEach((el) => { const s = el.querySelector(".say"); if (s && (!S.say || el.dataset.pal !== S.me)) s.remove(); });
-  if (!S.say || !S.me) return;
-  const el = PAL[S.me]; if (el.querySelector(".say")) { const i = el.querySelector("#sayIn"); if (i) i.focus(); return; }
-  const f = document.createElement("form"); f.className = "say hit";
-  f.innerHTML = '<label for="sayIn" class="sr">메시지</label><input id="sayIn" maxlength="200" autocomplete="off" placeholder="말하기 (← → 걷기)"><button type="submit">말하기</button>';
-  f.addEventListener("click", (e) => e.stopPropagation());
-  f.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const inp = f.querySelector("input"), text = inp.value.trim(); if (!text) return;
-    inp.value = ""; inp.focus();
-    try { const row = await store.sendChat({ member: S.me, text: text.slice(0, 200), kind: "chat" }); if (row) addChat(row); } catch (err) { toast("메시지를 보내지 못했어요."); }
-  });
-  const inp = f.querySelector("input");
-  inp.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { e.preventDefault(); exitWalk(); return; }
-    if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !inp.value) { e.preventDefault(); walkKeys.add(e.key); }
-  });
-  inp.addEventListener("keyup", (e) => walkKeys.delete(e.key));
-  el.appendChild(f);
-  D.wantFocus(true); inp.focus(); setTimeout(() => { if (S.say) inp.focus(); }, 30);
+  const who = document.getElementById("barWho"), inp = document.getElementById("sayIn"); if (!who || !inp) return;
+  const k = S.me || "";
+  if (paintSay._k === k) return; paintSay._k = k;
+  who.innerHTML = S.me ? '<img src="' + IMG(S.me) + '" alt="">' + esc(byId(S.me).name) : "";
+  inp.placeholder = S.me ? "말하면 머리 위에 말풍선이 떠요 · Enter 보내기 · 비어 있을 때 ← → 걷기" : "먼저 누구로 들어갈지 골라 주세요";
 }
 function openSay() { enterWalk(); }
 function closeSay(keepFocus) { exitWalk(keepFocus); }
@@ -399,7 +411,7 @@ function roomHTML(id, edit) {
     '<div class="wall" style="background:' + wall.css + '"></div><div class="floor" style="background:' + floor.css + '"></div>' +
     '<div class="window" aria-hidden="true"><i></i></div>' +
     placed.map((o) => '<div class="it ' + o.it.place + '" data-item="' + o.it.id + '" title="' + esc(o.it.name) + '" style="left:' + o.p.x + "%;top:" + o.p.y + "%;width:" + o.it.w + "px;height:" + o.it.h + 'px">' + itemSvg(o.it, id) + "</div>").join("") +
-    '<img class="roomspr' + (edit ? " movable" : "") + '" data-item="__me" src="' + IMG(id) + '" alt="" style="left:' + me.x + "%;top:" + me.y + '%">' +
+    avatarHTML(id, closetOf(id).wear, "roomspr" + (edit ? " movable" : ""), ' data-item="__me" style="left:' + me.x + "%;top:" + me.y + '%"') +
     (edit ? '<span class="roomhint">가구를 끌어서 옮겨요</span>' : "") + "</div>";
 }
 function decorPanel(id, lv) {
@@ -448,9 +460,64 @@ function unlockedBetween(id, a, b) {
   return itemsFor(id).filter(inRange).map((o) => o.name).concat(WALLS.filter(inRange).map((o) => o.name + " 벽지"), FLOORS.filter(inRange).map((o) => o.name + " 바닥"));
 }
 
+/* ---------- 옷장과 옷가게 ---------- */
+const spentOf = (id) => closetOf(id).owned.reduce((a, x) => a + ((outfitById(x) || {}).price || 0), 0);
+const goldOf = (id) => Math.max(0, xpOf(id) - spentOf(id));
+async function saveCloset(c) {
+  const cur = S.rooms && S.rooms[S.me];
+  const L = cur && cur.items ? JSON.parse(JSON.stringify(cur)) : Object.assign(defaultLayout(), cur || {});
+  L.closet = c;
+  S.rooms = Object.assign({}, S.rooms, { [S.me]: L });
+  paintAll(); renderCard();
+  try { await store.saveRoom(S.me, L); } catch (e) { toast("옷장을 저장하지 못했어요. 잠시 후 다시 해 주세요."); }
+}
+function toggleWear(oid) {
+  if (!S.me) return;
+  const o = outfitById(oid), c = closetOf(S.me); if (!o || !c.owned.includes(oid)) return;
+  if (c.wear[o.slot] === oid) delete c.wear[o.slot]; else c.wear[o.slot] = oid;
+  saveCloset(c);
+}
+async function buyOutfit(oid) {
+  if (!S.me) { openCard("who"); return; }
+  const o = outfitById(oid), c = closetOf(S.me); if (!o || c.owned.includes(oid)) return;
+  const g = goldOf(S.me);
+  if (g < o.price) { toast("골드가 " + (o.price - g) + " 모자라요. 할 일을 끝내면 XP만큼 골드가 생겨요."); return; }
+  c.owned.push(oid); c.wear[o.slot] = oid;
+  if (S.tryOn) delete S.tryOn[o.slot];
+  await saveCloset(c);
+  toast("「" + o.name + "」을(를) 사서 바로 입었어요! 🪙 " + goldOf(S.me) + " 남았어요.");
+  announce(byId(S.me).name + " 님이 옷가게에서 「" + o.name + "」을(를) 샀어요!");
+}
+function closetPanel(id, mine) {
+  const c = closetOf(id);
+  if (!mine) {
+    const on = SLOTS.map((s) => c.wear[s.id] && outfitById(c.wear[s.id]).name).filter(Boolean);
+    return '<h3>입은 옷</h3><p class="muted" style="margin:0">' + (on.length ? esc(on.join(" · ")) : "아직 아무것도 걸치지 않았어요.") + "</p>";
+  }
+  if (!c.owned.length) return '<h3>옷장</h3><p class="empty">아직 옷이 없어요. 마을 옷가게에 가 볼까요? <button class="ghost" data-act="openShop">👕 옷가게</button></p>';
+  return '<h3>옷장 <span class="muted" style="font-family:var(--body)">누르면 입고, 다시 누르면 벗어요</span></h3><div class="chips">' +
+    SLOTS.map((s) => c.owned.map(outfitById).filter((o) => o.slot === s.id).map((o) => '<button type="button" class="chip' + (c.wear[o.slot] === o.id ? " on" : "") + '" data-wear="' + o.id + '"><span class="mini">' + outfitIcon(o) + "</span><span>" + esc(o.name) + "</span>" + (c.wear[o.slot] === o.id ? "<em>입는 중</em>" : "") + "</button>").join("")).join("") + "</div>";
+}
+function shopHTML() {
+  if (!S.me) return "";
+  const c = closetOf(S.me), g = goldOf(S.me), tryOn = S.tryOn || {}, look = Object.assign({}, c.wear, tryOn);
+  Object.keys(look).forEach((k) => { if (!look[k]) delete look[k]; });
+  const rows = SLOTS.map((s) => '<h3>' + s.name + '</h3><div class="shop">' + OUTFITS.filter((o) => o.slot === s.id).map((o) => {
+    const own = c.owned.includes(o.id), wearing = c.wear[o.slot] === o.id, trying = tryOn[o.slot] === o.id;
+    const btn = own ? '<button class="ghost sm" data-wear="' + o.id + '">' + (wearing ? "벗기" : "입기") + "</button>"
+      : '<button class="primary sm" data-buy="' + o.id + '"' + (g < o.price ? " disabled" : "") + ">🪙 " + o.price + "</button>";
+    return '<div class="ware' + (trying ? " try" : "") + (wearing ? " on" : "") + '"><button type="button" class="pic" data-try="' + o.id + '" title="' + (own ? "" : "눌러서 입어 보기") + '">' + outfitIcon(o) + "</button><b>" + esc(o.name) + "</b>" + (own ? '<span class="muted" style="margin:0;font-size:11px">' + (wearing ? "입는 중" : "가진 옷") + "</span>" : "") + btn + "</div>";
+  }).join("") + "</div>").join("");
+  return '<div class="card wide hit" role="dialog" aria-label="마을 옷가게"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
+    '<p class="big">👕 마을 옷가게</p>' +
+    '<div class="fitting">' + avatarHTML(S.me, look, "big") + '<div><p style="margin:0"><b>' + esc(byId(S.me).name) + '</b> 님의 골드 <b class="gold">🪙 ' + g + "</b></p>" +
+    '<p class="muted" style="margin:4px 0 0">할 일을 끝내 모은 XP만큼 골드가 생겨요. 옷을 사도 레벨은 그대로예요.<br>그림을 누르면 거울 앞에서 입어 볼 수 있어요.</p>' +
+    (Object.keys(tryOn).length ? '<button class="ghost sm" data-act="clearTry" style="margin-top:6px">입어 보기 그만</button>' : "") + "</div></div>" + rows + "</div>";
+}
+
 /* ---------- 카드 ---------- */
 function openCard(c) { if (S.walk) exitWalk(true); S.card = c; renderCard(); if (c && c !== "who") D.wantFocus(true); }
-function closeCard() { S.edit = null; S.pickSkill = null; S.card = null; renderCard(); if (!S.say) D.wantFocus(false); }
+function closeCard() { S.edit = null; S.pickSkill = null; S.tryOn = null; S.card = null; renderCard(); if (!S.say) D.wantFocus(false); }
 function renderCard() {
   const box = document.getElementById("cards"); let html = "";
   const c = S.card;
@@ -498,18 +565,31 @@ function renderCard() {
         return '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> Lv." + lv + " " + esc(titleOf(m, lv, S.routes[m.id])) + ' <span class="muted">· ' + d + "/" + w.length + (asleep(m.id) ? " · 자리 비움" : "") + "</span></span></li>"; }).join("") + "</ul>" +
       '<h3>최근 이야기<button class="ghost" data-act="openLog" style="margin-left:auto">전체 기록 보기</button></h3>' +
       (feed.length ? '<ul class="feed">' + feed.map((x) => { const m = byId(x.member); return x.kind === "system" || !m ? '<li class="sys">· ' + esc(x.text) + "</li>" : '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> " + esc(x.text) + ' <span class="muted">' + hhmm(x.created_at) + "</span></span></li>"; }).join("") + "</ul>" : '<p class="empty">아직 조용해요. 먼저 인사해 볼까요?</p>') + "</div>";
-  } else if (c && c.type === "person") {
-    const m = byId(c.id), route = S.routes[m.id], info = levelInfo(xpOf(m.id)), nx = nextStep(m, info.lv, route);
-    const mine = m.id === S.me, wt = weekTasks(m.id), wl = weekLabel(S.week), edit = S.edit && S.edit.id === m.id;
-    const stops = [1, 5, 10, 15, 20].map((l) => { let t = titleOf(m, l, route); if (m.id === "eunhwan" && !route && l >= 10) t = l === 10 ? "2차 전직 · 세 갈래 길" : "???"; return '<li class="' + (info.lv >= l ? "on" : "") + '"><i></i><small>Lv.' + l + "</small>" + esc(t) + "</li>"; }).join("");
-    html = '<div class="card wide hit" role="dialog" aria-label="' + esc(m.name) + ' 님의 방"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
-      '<p class="roomtitle"><span class="cls">' + esc(m.place) + '</span> <b class="big" style="font-size:19px">' + esc(titleOf(m, info.lv, route)) + "</b></p>" +
+  } else if (c && c.type === "room") {
+    const m = byId(c.id), route = S.routes[m.id], info = levelInfo(xpOf(m.id)), mine = m.id === S.me, edit = S.edit && S.edit.id === m.id;
+    html = '<div class="card wide hit" role="dialog" aria-label="' + esc(m.place) + '"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
+      '<p class="roomtitle"><span class="cls">' + esc(m.place) + '</span> <b class="big" style="font-size:19px">' + esc(m.name) + " 님의 방</b></p>" +
       roomHTML(m.id, edit) +
       (edit ? decorPanel(m.id, info.lv) :
-        '<div class="rowline"><p class="muted" style="margin:0;flex:1">' + esc(m.name) + " · " + esc(m.cls) + " · Lv." + info.lv + " · " + (info.lv < 20 ? info.into + " / " + info.need + " XP" : "만렙") + (nx ? " · 다음 Lv." + nx.lv + " " + esc(nx.title) : "") + "</p>" +
-        (mine ? '<button class="ghost" data-act="decor">방 꾸미기</button>' : "") + "</div>" +
+        '<div class="rowline"><p class="muted" style="margin:0;flex:1">' + esc(m.name) + " · Lv." + info.lv + " " + esc(titleOf(m, info.lv, route)) + (mine ? "" : " · 방 구경은 마음껏!") + "</p>" +
+        (mine ? '<button class="ghost" data-act="decor">방 꾸미기</button>' : "") + '<button class="ghost" data-person="' + m.id + '">👤 스테이터스</button></div>') + "</div>";
+  } else if (c && c.type === "shop") {
+    html = shopHTML();
+  } else if (c && c.type === "person") {
+    const m = byId(c.id), route = S.routes[m.id], info = levelInfo(xpOf(m.id)), nx = nextStep(m, info.lv, route);
+    const mine = m.id === S.me, wt = weekTasks(m.id), wl = weekLabel(S.week), cl = closetOf(m.id);
+    const stops = [1, 5, 10, 15, 20].map((l) => { let t = titleOf(m, l, route); if (m.id === "eunhwan" && !route && l >= 10) t = l === 10 ? "2차 전직 · 세 갈래 길" : "???"; return '<li class="' + (info.lv >= l ? "on" : "") + '"><i></i><small>Lv.' + l + "</small>" + esc(t) + "</li>"; }).join("");
+    html = '<div class="card wide hit" role="dialog" aria-label="' + esc(m.name) + ' 님의 스테이터스"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
+      '<div class="prof">' + avatarHTML(m.id, cl.wear, "big") + '<div class="pinfo">' +
+        '<span class="cls">' + esc(m.cls) + '</span><p class="big" style="margin:4px 0 2px">' + esc(m.name) + ' <small class="muted" style="font-family:var(--body);font-size:13px">Lv.' + info.lv + "</small></p>" +
+        '<b class="ptitle">' + esc(titleOf(m, info.lv, route)) + "</b>" +
+        '<p class="muted" style="margin:4px 0 0">' + (info.lv < 20 ? info.into + " / " + info.need + " XP" : "만렙") + (nx ? " · 다음 Lv." + nx.lv + " " + esc(nx.title) : "") + "</p>" +
         '<span class="xp"><i style="width:' + info.pct + '%"></i></span>' +
-        statPanel(m.id, mine) +
+        '<p class="gold">🪙 ' + goldOf(m.id) + ' 골드 <span class="muted">· 모은 XP만큼 생겨요</span></p>' +
+        '<div class="pbtns"><button class="ghost" data-goroom="' + m.id + '">🏠 ' + (mine ? "내 방" : "방 구경") + "</button>" + (mine ? '<button class="ghost" data-act="openShop">👕 옷가게</button>' : "") + "</div>" +
+      "</div></div>" +
+      statPanel(m.id, mine) +
+      closetPanel(m.id, mine) +
         '<h3>할 일<span class="wk"><button data-act="prev" aria-label="지난주">◀</button>' + wl.title + '<button data-act="next" aria-label="다음 주">▶</button></span></h3>' +
         (wt.length ? '<ul class="tasks">' + wt.map((t) => '<li class="task' + (t.done ? " done" : "") + '">' +
           (mine ? '<label><input type="checkbox" data-toggle="' + esc(t.id) + '"' + (t.done ? " checked" : "") + '><span class="sz ' + t.size + '">' + t.size + '</span><span class="tt">' + esc(t.title) + "</span></label>"
@@ -519,8 +599,7 @@ function renderCard() {
         (mine ? '<form class="add" data-form="add"><label class="sr" for="newTask">새 할 일</label><input type="text" id="newTask" maxlength="60" placeholder="예: 쇼츠 1편 편집" value="' + esc(S.draft) + '">' +
           '<div class="seg" role="group" aria-label="크기">' + ["S", "M", "L"].map((z) => '<button type="button" data-size="' + z + '" aria-pressed="' + (S.size === z) + '">' + z + "·" + XP[z] + "</button>").join("") + "</div>" +
           '<button class="primary" type="submit">추가</button></form>' : '<p class="note">다른 사람의 할 일은 볼 수만 있어요. 방 구경은 마음껏!</p>') +
-        '<h3>꿈 로드맵</h3><ol class="road">' + stops + "</ol>" +
-        "") + "</div>";
+        '<h3>꿈 로드맵</h3><ol class="road">' + stops + "</ol>" + "</div>";
   }
   const prev = box.querySelector(".card"), prevScroll = prev ? prev.scrollTop : 0, prevLog = box.querySelector(".chatlog"), logAtBottom = prevLog ? prevLog.scrollHeight - prevLog.scrollTop - prevLog.clientHeight < 30 : true, logScroll = prevLog ? prevLog.scrollTop : 0, sameKind = renderCard._k === JSON.stringify(c);
   const sayVal = document.getElementById("logIn") ? document.getElementById("logIn").value : null;
@@ -529,9 +608,9 @@ function renderCard() {
   if (card && sameKind) card.scrollTop = prevScroll;
   const lg = box.querySelector(".chatlog"); if (lg) lg.scrollTop = (sameKind && !logAtBottom) ? logScroll : lg.scrollHeight;
   const li = document.getElementById("logIn"); if (li) { if (sayVal !== null) li.value = sayVal; if (S.focusLog) { li.focus(); S.focusLog = false; } }
-  if (card) { card.style.right = Math.max(8, S.off) + "px"; card.style.bottom = "140px"; }
+  if (card) { card.style.right = Math.max(8, S.off) + "px"; card.style.bottom = (140 + CHATH) + "px"; }
   const tb = document.getElementById("toasts");
-  tb.style.bottom = "150px"; tb.style.right = (card ? Math.max(8, S.off) + card.offsetWidth + 12 : S.off) + "px";
+  tb.style.bottom = (150 + CHATH) + "px"; tb.style.right = (card ? Math.max(8, S.off) + card.offsetWidth + 12 : S.off) + "px";
   const inp = document.getElementById("newTask"); if (inp && S.focusInput) { inp.focus(); S.focusInput = false; }
 }
 
@@ -572,7 +651,18 @@ async function toggleTask(id, done) {
 /* ---------- 입력 ---------- */
 document.addEventListener("click", async (e) => {
   const pal = e.target.closest("[data-pal]");
-  if (pal && !e.target.closest(".say")) { const id = pal.dataset.pal; if (id === S.me) { if (S.say) exitWalk(); else enterWalk(); return; } if (S.say) exitWalk(true); if (S.card && S.card.type === "person" && S.card.id === id) closeCard(); else { S.week = thisWeek(); openCard({ type: "person", id }); } return; }
+  const toggleCard = (c) => { if (S.say) exitWalk(true); if (S.card && S.card.type === c.type && S.card.id === c.id) closeCard(); else { S.week = thisWeek(); S.edit = null; S.tryOn = null; openCard(c); } };
+  if (pal) { toggleCard({ type: "person", id: pal.dataset.pal }); return; }
+  const house = e.target.closest("[data-house],[data-goroom],[data-person]");
+  if (house) { if (house.dataset.person) toggleCard({ type: "person", id: house.dataset.person }); else toggleCard({ type: "room", id: house.dataset.house || house.dataset.goroom }); return; }
+  if (e.target.closest("[data-shop]")) { if (!S.me) { openCard("who"); return; } toggleCard({ type: "shop" }); return; }
+  const wr = e.target.closest("[data-wear],[data-buy],[data-try]");
+  if (wr) {
+    if (wr.dataset.wear) toggleWear(wr.dataset.wear);
+    else if (wr.dataset.buy) buyOutfit(wr.dataset.buy);
+    else { const o = outfitById(wr.dataset.try); S.tryOn = Object.assign({}, S.tryOn); if (S.tryOn[o.slot] === o.id) S.tryOn[o.slot] = null; else S.tryOn[o.slot] = o.id; renderCard(); }
+    return;
+  }
   const dz = e.target.closest("[data-wall],[data-floor],[data-toggleitem]");
   if (dz && S.edit) {
     const L = S.edit.layout;
@@ -593,7 +683,9 @@ document.addEventListener("click", async (e) => {
   else if (a === "moreLog") { const nums = S.chat.map((x) => x.id).filter((x) => typeof x === "number"); const more = nums.length ? await store.chatBefore(Math.min(...nums)) : []; if (!more.length) S.chatEnd = true; more.forEach((x) => { if (!S.chat.some((y) => y.id === x.id)) S.chat.push(x); }); S.chat.sort((p, q) => p.id - q.id); renderCard._k = ""; renderCard(); const lg = document.querySelector(".chatlog"); if (lg) lg.scrollTop = 0; }
   else if (a === "cancelDecor") { S.edit = null; renderCard(); }
   else if (a === "saveRoom") { const L = S.edit.layout; S.edit = null; S.rooms = Object.assign({}, S.rooms, { [S.me]: L }); renderCard(); try { await store.saveRoom(S.me, L); toast("방을 저장했어요. 동료들이 놀러 오면 볼 수 있어요!"); } catch (err) { toast("방을 저장하지 못했어요. setup.sql을 다시 실행했는지 확인해 주세요."); } }
-  else if (a === "myroom") { if (!S.me) { openCard("who"); return; } if (S.say) exitWalk(true); if (S.card && S.card.type === "person" && S.card.id === S.me) closeCard(); else { S.week = thisWeek(); openCard({ type: "person", id: S.me }); } }
+  else if (a === "myroom") { if (!S.me) { openCard("who"); return; } toggleCard({ type: "room", id: S.me }); }
+  else if (a === "openShop") { if (!S.me) { openCard("who"); return; } if (S.card && S.card.type === "shop" && el.closest(".ctrl")) closeCard(); else { S.tryOn = null; openCard({ type: "shop" }); } }
+  else if (a === "clearTry") { S.tryOn = null; renderCard(); }
   else if (a === "minimize") { if (S.walk) exitWalk(); if (S.say) closeSay(); D.minimize(); }
   else if (a === "miniFromQuit") { closeCard(); setMini(true); }
   else if (a === "askQuit") openCard("quit");
@@ -608,14 +700,14 @@ document.addEventListener("click", async (e) => {
     try { localStorage.setItem("dreamguild-me", S.me); } catch (err) {}
     if (prev && prev !== S.me && store.mode === "remote") { location.reload(); return; }
     if (!prev) startLive();
-    closeCard(); paintAll(); toast(byId(S.me).name + " 님, 반가워요! 내 캐릭터를 누르면 말하고 걸을 수 있어요.");
+    closeCard(); paintAll(); toast(byId(S.me).name + " 님, 반가워요! 아래 채팅창에 말하면 말풍선이 떠요.");
   }
   else if (el.dataset.size) { S.size = el.dataset.size; const i = document.getElementById("newTask"); if (i) S.draft = i.value; renderCard(); }
   else if (el.dataset.del) await act(() => store.remove(el.dataset.del));
   else if (el.dataset.route) { const r = el.dataset.route; await act(() => store.setRoute("eunhwan", r)); closeCard(); toast("전직 완료! " + ROUTES[r].titles[0], true); announce("은환 님이 「" + ROUTES[r].name + "」로 전직했어요!"); }
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && e.target.classList && e.target.classList.contains("pal")) { e.target.click(); return; }
+  if ((e.key === "Enter" || e.key === " ") && e.target.classList && (e.target.classList.contains("pal") || e.target.classList.contains("vhouse"))) { e.preventDefault(); e.target.click(); return; }
   if (e.key === "Escape") { if (S.card && S.me) closeCard(); else if (S.say) exitWalk(); }
 });
 document.addEventListener("keyup", (e) => walkKeys.delete(e.key));
@@ -628,6 +720,12 @@ document.addEventListener("submit", async (e) => {
     const title = (S.draft || "").trim(); if (!title || !S.me) return;
     S.draft = ""; S.focusInput = true;
     await act(() => store.add({ member: S.me, week: ymd(S.week), title: title.slice(0, 60), size: S.size, done: false }));
+  } else if (f === "bar") {
+    const inp = document.getElementById("sayIn"), text = inp.value.trim();
+    if (!S.me) { openCard("who"); return; }
+    if (!text) return;
+    inp.value = ""; inp.focus();
+    try { const row = await store.sendChat({ member: S.me, text: text.slice(0, 200), kind: "chat" }); if (row) addChat(row); } catch (err) { toast("메시지를 보내지 못했어요."); }
   } else if (f === "logsay") {
     const inp = document.getElementById("logIn"), text = inp.value.trim(); if (!text || !S.me) return;
     inp.value = ""; S.focusLog = true;

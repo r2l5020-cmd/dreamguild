@@ -14,25 +14,65 @@ button{cursor:pointer}
 img{display:block;-webkit-user-drag:none}
 
 /* 캐릭터 줄 */
-.row{position:fixed;left:0;right:0;bottom:0;height:0}
+.row{position:fixed;left:0;right:0;bottom:44px;height:0}
+body.mini .row{bottom:0}
+
+/* 땅 아래 고정 채팅창 */
+.chatbar{position:fixed;bottom:0;height:44px;display:flex;align-items:center;gap:6px;padding:5px 8px;background:#7A5230;border-top:3px solid #5A3A20;box-shadow:inset 0 3px 0 #8E6440;z-index:4}
+.chatbar .who{display:flex;align-items:center;gap:4px;font-family:var(--pixel);font-size:13px;color:#FFF4DC;white-space:nowrap;flex:none}
+.chatbar .who img{height:28px;width:auto}
+.chatbar input{flex:1;min-width:0;height:32px;border:2px solid #5A3A20;border-radius:8px;padding:0 10px;font-size:14px;background:#FFF8EA;user-select:text;-webkit-user-select:text}
+.chatbar input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 2px rgba(227,166,60,.5)}
+.chatbar button{height:32px;padding:0 12px;border-radius:8px;white-space:nowrap;font-weight:700;flex:none}
+.chatbar .send{border:2px solid #5A3A20;background:var(--gold)}
+.chatbar .log{border:2px solid #5A3A20;background:#FFF8EA;color:var(--wood-d);font-size:12px}
+body.mini .chatbar{display:none}
+html.web .chatbar{left:0!important;width:100%!important;padding:5px max(8px,calc(50vw - 420px))}
+
+/* 스테이터스 카드 · 옷가게 */
+.prof{display:flex;gap:14px;align-items:flex-end;margin-bottom:6px}
+.av.big .spr{height:132px;width:auto}
+.av.big{flex:none;padding:0 10px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.2))}
+.pinfo{flex:1;min-width:0}
+.ptitle{font-family:var(--pixel);font-weight:400;font-size:15px;color:var(--wood-d)}
+.gold{margin:6px 0 0;font-weight:700;color:#9A6A12}
+.gold .muted{font-weight:400;font-size:11px}
+.pbtns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.ghost.sm{height:30px;font-size:12px;padding:0 10px}
+.fitting{display:flex;gap:14px;align-items:flex-end;padding:10px;background:linear-gradient(#F4E3C3,#FBF1DE);border:1.5px solid var(--line);border-radius:12px;margin-top:8px}
+.shop{display:grid;grid-template-columns:repeat(auto-fill,minmax(98px,1fr));gap:6px}
+.ware{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);text-align:center;font-size:12px}
+.ware b{font-weight:700;line-height:1.25}
+.ware.on{border-color:var(--wood);background:#FDEBC2}
+.ware.try{border-color:var(--gold);box-shadow:0 0 0 2px rgba(227,166,60,.45)}
+.ware .pic{width:64px;height:48px;padding:4px;border:0;border-radius:8px;background:#F4E3C3;display:flex;align-items:center;justify-content:center}
+.ware .pic svg{width:100%;height:100%}
+.ware .primary.sm,.ware .ghost.sm{height:28px;width:100%;padding:0 6px}
+.chip .mini svg{width:100%;height:100%}
 .pal{position:absolute;bottom:2px;width:84px;display:flex;flex-direction:column;align-items:center;cursor:pointer;transition:transform 1.8s ease-in-out,left .18s linear;outline:none}
 .pal.me{z-index:3}
 .pal.stepping{transition:transform 1.8s ease-in-out}
 .pal.me:focus-visible .tag{box-shadow:0 0 0 2px #fff}
-.pal .spr{height:104px;width:auto;filter:drop-shadow(0 2px 2px rgba(0,0,0,.25));animation:breathe 2.6s ease-in-out infinite;transform-origin:50% 100%}
-.pal.walk .spr{animation:walk .32s ease-in-out infinite}
-.pal.jump .spr{animation:jump .5s ease-out 3}
-.pal.sleep .spr{opacity:.55;filter:grayscale(.35) drop-shadow(0 2px 2px rgba(0,0,0,.2));animation:none}
+.av{position:relative;display:inline-block;line-height:0}
+.av .spr{position:relative;z-index:1;display:block}
+.av .ol{position:absolute;inset:0;pointer-events:none}
+.av .ol.back{z-index:0}.av .ol.front{z-index:2}
+.av .ol svg{display:block;width:100%;height:100%;overflow:visible}
+.pal .spr{height:104px;width:auto}
+.pal .av{filter:drop-shadow(0 2px 2px rgba(0,0,0,.25));animation:breathe 2.6s ease-in-out infinite;transform-origin:50% 100%}
+.pal.walk .av{animation:walk .32s ease-in-out infinite}
+.pal.jump .av{animation:jump .5s ease-out 3}
+.pal.sleep .av{opacity:.55;filter:grayscale(.35) drop-shadow(0 2px 2px rgba(0,0,0,.2));animation:none}
 .pal .tag{margin-bottom:2px;font-family:var(--pixel);font-size:12px;white-space:nowrap;background:rgba(78,46,23,.86);color:#FFF4DC;padding:1px 8px;border-radius:7px}
 .pal.me .tag{background:var(--gold);color:var(--ink)}
 .pal.sleep .tag{background:rgba(78,46,23,.5)}
 .pal .zz{position:absolute;top:18px;right:6px;font-family:var(--pixel);font-size:14px;color:#4F74C8;animation:zz 2.4s ease-in-out infinite;text-shadow:0 0 3px #fff}
-.pal:hover .spr{filter:drop-shadow(0 0 6px rgba(227,166,60,.95))}
+.pal:hover .av{filter:drop-shadow(0 0 6px rgba(227,166,60,.95))}
 @keyframes breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.02,.985)}}
 @keyframes walk{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-4px) rotate(2deg)}}
 @keyframes jump{0%,100%{transform:translateY(0)}40%{transform:translateY(-26px)}}
 @keyframes zz{0%{opacity:0;transform:translate(0,6px)}40%{opacity:1}100%{opacity:0;transform:translate(8px,-12px)}}
-@media (prefers-reduced-motion:reduce){.pal .spr,.pal.walk .spr,.pal .zz{animation:none}.pal{transition:none}}
+@media (prefers-reduced-motion:reduce){.pal .av,.pal.walk .av,.pal .zz{animation:none}.pal{transition:none}}
 
 /* 말풍선 */
 .bubble{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);width:max-content;max-width:230px;background:#fff;border:2px solid var(--ink);border-radius:12px;padding:6px 11px;font-size:15px;line-height:1.4;box-shadow:0 3px 8px rgba(0,0,0,.18);pointer-events:none;overflow-wrap:anywhere;animation:pop .18s ease-out}
@@ -58,7 +98,7 @@ img{display:block;-webkit-user-drag:none}
 @keyframes flick{0%,100%{transform:scale(1,1)}50%{transform:scale(.94,1.06)}}
 
 /* 카드 */
-.card{position:fixed;width:400px;max-height:calc(100vh - 150px);overflow-y:auto;overflow-x:hidden;background:var(--paper);border:3px solid var(--wood);border-radius:18px;padding:16px 18px;box-shadow:0 10px 30px rgba(40,25,12,.35);animation:rise .18s ease-out;user-select:text;-webkit-user-select:text}
+.card{position:fixed;width:400px;max-height:calc(100vh - 200px);overflow-y:auto;overflow-x:hidden;background:var(--paper);border:3px solid var(--wood);border-radius:18px;padding:16px 18px;box-shadow:0 10px 30px rgba(40,25,12,.35);animation:rise .18s ease-out;user-select:text;-webkit-user-select:text}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .card .x{position:absolute;top:10px;right:10px;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--paper2)}
 .phead{display:flex;gap:12px;align-items:flex-end;padding-right:36px}
@@ -146,7 +186,8 @@ body.mini .ground{display:none}
 .room .window::after{content:"";position:absolute;left:0;right:0;top:50%;border-top:3px solid #8A5A33}
 .room .it{position:absolute;transform:translate(-50%,-100%)}
 .room .it svg{display:block}
-.room .roomspr{position:absolute;height:92px;width:auto;transform:translate(-50%,-100%);filter:drop-shadow(0 2px 2px rgba(0,0,0,.25))}
+.room .roomspr{position:absolute;transform:translate(-50%,-100%);filter:drop-shadow(0 2px 2px rgba(0,0,0,.25))}
+.room .roomspr .spr{height:92px;width:auto}
 .room.edit .it,.room.edit .roomspr{cursor:grab;touch-action:none}
 .room.edit .it:hover,.room.edit .roomspr:hover{filter:drop-shadow(0 0 3px #E3A63C) drop-shadow(0 0 3px #E3A63C)}
 .room.edit .drag{cursor:grabbing;z-index:50;filter:drop-shadow(0 4px 6px rgba(0,0,0,.35))}
@@ -192,7 +233,7 @@ body.mini .ground{display:none}
 .float{position:absolute;top:26px;font-family:var(--pixel);font-size:14px;font-weight:700;white-space:nowrap;pointer-events:none;text-shadow:0 0 3px #fff,0 0 3px #fff;animation:floatUp 1.8s ease-out forwards;z-index:6}
 .float.hpf{color:#C2392E}.float.mpf{color:#2F78C4}.float.sk{color:#7A4A10;top:0}
 @keyframes floatUp{0%{opacity:0;transform:translateY(8px)}15%{opacity:1}100%{opacity:0;transform:translateY(-46px)}}
-.pal.cast .spr{filter:drop-shadow(0 0 6px #F5C451) drop-shadow(0 0 10px #F5C451)}
+.pal.cast .av{filter:drop-shadow(0 0 6px #F5C451) drop-shadow(0 0 10px #F5C451)}
 /* 능력치 카드 */
 .stats{margin-top:10px;padding:10px 12px;background:var(--card);border:1.5px solid var(--line);border-radius:12px}
 .statbar{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin:2px 0}
@@ -219,16 +260,21 @@ body.mini .ground{display:none}
 
 .pal .sweat{position:absolute;top:44px;right:12px;font-size:13px;animation:sweat 2.2s ease-in-out infinite;pointer-events:none}
 @keyframes sweat{0%,100%{transform:translateY(0);opacity:.9}50%{transform:translateY(5px);opacity:.5}}
-.pal.tired .spr{animation-duration:4s}
+.pal.tired .av{animation-duration:4s}
 
 /* 웹 버전 (맥 친구들용) — 투명 배경 대신 하늘과 언덕 */
 html.web{background:linear-gradient(#7fa6d6 0%,#b9d3ee 62%,#e6eef3 100%)}html.web body{background:transparent}
-html.web body::before{content:"";position:fixed;left:-10%;right:-10%;bottom:0;height:150px;z-index:-1;background:radial-gradient(ellipse at 25% 100%,#8fbf73 0 60%,transparent 61%),radial-gradient(ellipse at 80% 100%,#a3cc84 0 55%,transparent 56%);pointer-events:none}
-html.web body::after{content:"";position:fixed;left:0;right:0;bottom:0;height:14px;z-index:-1;background:#6f9e55;pointer-events:none}
+html.web body::before{content:"";position:fixed;left:-10%;right:-10%;bottom:44px;height:150px;z-index:-1;background:radial-gradient(ellipse at 25% 100%,#8fbf73 0 60%,transparent 61%),radial-gradient(ellipse at 80% 100%,#a3cc84 0 55%,transparent 56%);pointer-events:none}
+html.web body::after{content:"";position:fixed;left:0;right:0;bottom:44px;height:14px;z-index:-1;background:#6f9e55;pointer-events:none}
 html.web .ground{left:0!important;width:100%!important;border-radius:0}
 
 /* 홍보영상팀 마을 (웹 배경, village.js) — 1칸 = var(--px) */
-#village{position:fixed;inset:0;z-index:-1;pointer-events:none;--px:clamp(1.3px,.22vw,3.4px);--base:min(128px,22vh)}
+#village{position:fixed;inset:0;z-index:0;pointer-events:none;--px:clamp(1.3px,.22vw,3.4px);--base:calc(min(128px,22vh) + 44px)}
+#village .vhouse{pointer-events:auto;cursor:pointer;transition:transform .15s}
+#village .vhouse:hover{transform:translateY(-3px)}
+#village .vhouse:hover .vart{filter:drop-shadow(0 0 4px rgba(255,236,170,.95)) drop-shadow(0 calc(var(--px) * 1) 0 rgba(59,42,30,.18))}
+#village .vhouse:hover .vlabel{background:var(--gold);color:var(--ink);text-shadow:none}
+#village .vhouse:focus-visible{outline:3px solid var(--gold);outline-offset:3px;border-radius:4px}
 #village svg{display:block;width:calc(var(--w) * var(--px));height:calc(var(--h) * var(--px));overflow:visible}
 #village .vhill{position:absolute;left:-6%;right:-6%;bottom:0;height:var(--base);background:#9FCA7F;border-radius:50% 50% 0 0/38px 38px 0 0;box-shadow:inset 0 4px 0 #B5D995}
 #village .vrow{position:absolute;left:0;right:0;bottom:calc(var(--base) - 6px);display:flex;justify-content:space-evenly;align-items:flex-end;padding:0 1vw}

@@ -89,19 +89,32 @@
       r(33, 32, 4, 1, O) + r(33, 33, 1, 1, O) + r(36, 33, 1, 1, O) + box(32, 34, 6, 6, "#b8453f") + r(33, 36, 4, 1, G),
   };
 
+  // 마을 옷가게 — 분홍 벽, 민트 차양, 쇼윈도의 원피스, 옷걸이 간판
+  const SHOP = () =>
+    r(18, 2, 4, 1, O) + r(19, 3, 2, 2, O) + r(14, 5, 12, 1, O) + r(13, 6, 2, 1, O) + r(25, 6, 2, 1, O) + r(12, 7, 16, 1, O) +
+    box(2, 13, 36, 27, "#f6c1cf") + box(0, 9, 40, 5, "#e88aa6") + r(3, 10, 34, 1, "#f2a9bf") +
+    r(2, 14, 36, 4, O) + [3, 9, 15, 21, 27, 33].map((x) => r(x, 15, 3, 3, "#7fcfbf") + r(x + 3, 15, Math.min(3, 37 - x - 3), 3, W)).join("") +
+    [3, 9, 15, 21, 27, 33].map((x) => r(x, 18, 3, 1, "#7fcfbf")).join("") +
+    box(4, 21, 16, 15, WD) + r(5, 22, 14, 13, "#e8f4fb") + r(6, 23, 2, 1, "#fff") +
+    r(11, 23, 2, 2, "#f6e3bf") + r(11, 25, 2, 1, O) + r(10, 26, 4, 3, "#e05a4f") + r(9, 29, 6, 3, "#e05a4f") + r(8, 32, 8, 2, "#c4453f") + r(10, 28, 4, 1, G) + r(11, 34, 2, 1, O) +
+    box(23, 24, 10, 16, "#4f7a6a") + r(25, 26, 6, 6, GL) + r(30, 33, 1, 1, G) +
+    box(22, 20, 12, 3, W) + r(24, 21, 2, 1, "#e88aa6") + r(27, 21, 2, 1, "#7fcfbf") + r(30, 21, 2, 1, "#e88aa6") +
+    box(34, 33, 4, 7, "#8dbb5e") + r(35, 31, 2, 2, "#f2b8cf");
+
   const tree = (k) => k % 2
     ? svg(16, 26, r(6, 20, 4, 6, O) + r(7, 20, 2, 6, WD) + gable(0, 21, 16, "#4f8a3e", "#5f9a48") + gable(1, 16, 14, "#4f8a3e", "#5f9a48") + gable(2, 11, 12, "#4f8a3e", "#5f9a48") + gable(4, 6, 8, "#4f8a3e", "#5f9a48"), "vtree")
     : svg(16, 26, r(6, 16, 4, 10, O) + r(7, 16, 2, 10, WD) + disc(8, 9, 7, "#6fa34f") + r(4, 5, 3, 2, "#8dc46a") + r(10, 9, 2, 2, "#5b8f40") + r(5, 11, 1, 1, "#f2b8cf") + r(11, 5, 1, 1, "#f2b8cf"), "vtree");
   const cloud = () => svg(26, 9, r(6, 0, 10, 1, "#fff") + r(3, 1, 16, 2, "#fff") + r(0, 3, 26, 3, "#fff") + r(18, 2, 6, 1, "#fff") + r(1, 6, 24, 2, "#e3eef8") + r(4, 8, 18, 1, "#d2e2f2"), "vcloud");
 
   const v = document.createElement("div");
-  v.id = "village"; v.setAttribute("aria-hidden", "true");
-  let html = '<div class="vsky">' + [0, 1, 2, 3].map((i) => '<i class="c' + i + '">' + cloud() + "</i>").join("") + '</div><div class="vhill"></div>';
-  html += '<div class="vrow"><div class="vsign"><b>홍보영상팀 마을</b><span>DREAM GUILD</span></div>' + tree(0);
+  v.id = "village";
+  let html = '<div class="vsky" aria-hidden="true">' + [0, 1, 2, 3].map((i) => '<i class="c' + i + '">' + cloud() + "</i>").join("") + '</div><div class="vhill" aria-hidden="true"></div>';
+  html += '<div class="vrow"><div class="vsign" aria-hidden="true"><b>홍보영상팀 마을</b><span>DREAM GUILD</span></div>' +
+    '<div class="vhouse" data-shop="1" role="button" tabindex="0" aria-label="마을 옷가게 들어가기" title="마을 옷가게"><span class="vlabel">마을 옷가게</span>' + svg(40, 40, SHOP(), "vart") + "</div>" + tree(0);
   MEMBERS.forEach((m, i) => {
     const draw = HOUSES[m.id];
     if (!draw) return;
-    html += '<div class="vhouse"><span class="vlabel">' + m.place + "</span>" + svg(40, 40, draw(), "vart") + "</div>";
+    html += '<div class="vhouse" data-house="' + m.id + '" role="button" tabindex="0" aria-label="' + m.place + ' 방 구경하기" title="' + m.place + ' — 방 구경하기"><span class="vlabel">' + m.place + "</span>" + svg(40, 40, draw(), "vart") + "</div>";
     if (i % 2 === 1 && i < MEMBERS.length - 1) html += tree((i + 1) / 2);
   });
   html += tree(1) + "</div>";

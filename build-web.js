@@ -1,7 +1,7 @@
 // 웹 버전(맥 친구들용)을 docs/ 폴더로 만들어요. GitHub Pages가 docs/를 그대로 배포해요.
 const fs = require("fs"), path = require("path");
 const SRC = path.join(__dirname, "app"), OUT = path.join(__dirname, "docs");
-const FILES = ["index.html", "app.js", "data.js", "rooms.js", "skills.js", "village.js", "style.css", "manifest.json"];
+const FILES = ["index.html", "app.js", "data.js", "rooms.js", "skills.js", "wardrobe.js", "village.js", "style.css", "manifest.json"];
 const DIRS = ["fonts", "vendor", "assets"];
 const SKIP = new Set(["tray.png", "tray@2x.png", "logo.png"]);
 fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT);
