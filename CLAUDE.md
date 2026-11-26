@@ -11,7 +11,7 @@
   - `style.css`, `index.html`, `manifest.json`, `assets/`, `fonts/`(Galmuri11), `vendor/supabase.js`
 - `build-web.js` — `app/`을 `docs/`로 복사해요. GitHub Pages는 `docs/`를 배포해요.
 - `pack.js` — 데스크톱 앱 3종(Windows, Mac Apple Silicon, Mac Intel)을 `dist/`에 만들어요.
-- `setup.sql` — Supabase 표(dg_tasks, dg_members, dg_chat, dg_rooms, dg_skills, dg_notes), RLS, 실시간 정책. 1~7번은 실행돼 있고, 8번(dg_notes 쪽지)은 사용자가 Supabase SQL Editor에서 직접 실행해야 해요(안 돼 있으면 쪽지함에 안내가 떠요).
+- `setup.sql` — Supabase 표(dg_tasks, dg_members, dg_chat, dg_rooms, dg_skills, dg_notes), RLS, 실시간 정책. 1~8번 모두 실행돼 있어요(8번 dg_notes 쪽지는 2026-11-26 실행). Supabase 프로젝트 이름은 noonworship이에요.
 - `설치안내.md` — 팀원용 설치 안내.
 
 ## 배포
