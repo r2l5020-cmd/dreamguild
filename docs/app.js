@@ -28,6 +28,9 @@ function makeLocal() {
     async sendChat(c) { const d = read(); const m = Object.assign({ id: uid(), created_at: new Date().toISOString() }, c); d.chat.push(m); d.chat = d.chat.slice(-200); write(d); if (h) h.chat(m); },
     async chatSince() { return []; },
     async chatBefore() { return []; },
+    async loadNotes() { return (read().notes || []).slice(-100).reverse(); },
+    async sendNote(n) { const d = read(); const m = Object.assign({ id: Date.now(), created_at: new Date().toISOString(), read_at: null }, n); d.notes = (d.notes || []).concat([m]).slice(-200); write(d); return m; },
+    async readNote(id) { const d = read(); d.notes = (d.notes || []).map((n) => n.id === id ? Object.assign({}, n, { read_at: new Date().toISOString() }) : n); write(d); },
     live(handlers) { h = handlers; },
     sendMove() {}, retrack() {}
   };
@@ -55,6 +58,15 @@ function makeRemote() {
     async chatBefore(id) { const r = await sb.from("dg_chat").select("*").lt("id", id).order("id", { ascending: false }).limit(100); return r.error ? [] : r.data.reverse(); },
     async sendChat(c) { const r = chk(await sb.from("dg_chat").insert(c).select().single()); return r.data; },
     async chatSince(id) { const r = await sb.from("dg_chat").select("*").gt("id", id).order("id").limit(50); return r.error ? [] : r.data; },
+    /* 쪽지 (dg_notes 표 — setup.sql 8번) */
+    async loadNotes() {
+      if (!S.me) return [];
+      const r = await sb.from("dg_notes").select("*").or("recipient.eq." + S.me + ",sender.eq." + S.me).order("id", { ascending: false }).limit(100);
+      if (r.error) { S.notesMissing = true; return []; }
+      S.notesMissing = false; return r.data;
+    },
+    async sendNote(n) { const r = chk(await sb.from("dg_notes").insert(n).select().single()); return r.data; },
+    async readNote(id) { chk(await sb.from("dg_notes").update({ read_at: new Date().toISOString() }).eq("id", id)); },
     live(h) {
       const ch = sb.channel("dreamguild-village", { config: { private: true, presence: { key: S.me }, broadcast: { self: false } } });
       this._ch = ch;
@@ -65,6 +77,7 @@ function makeRemote() {
         .on("postgres_changes", { event: "*", schema: "public", table: "dg_members" }, () => h.data())
         .on("postgres_changes", { event: "*", schema: "public", table: "dg_rooms" }, () => h.data())
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "dg_skills" }, () => h.data())
+        .on("postgres_changes", { event: "*", schema: "public", table: "dg_notes" }, () => h.data())
         .subscribe(async (status, err) => {
           if (status === "SUBSCRIBED") { await ch.track({ desk: true, f: myF() }); if (this._warned) toast("실시간 연결이 다시 이어졌어요."); this._warned = false; }
           else if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && !this._warned) { this._warned = true; console.warn("realtime", status, err); toast("실시간 연결이 잠시 끊겼어요. 채팅과 할 일은 몇 초마다 다시 확인할게요."); }
@@ -219,6 +232,7 @@ function paintPal(id) {
   let zz = el.querySelector(".zz");
   if (sleep && !zz) { zz = document.createElement("span"); zz.className = "zz"; zz.textContent = "z z"; el.appendChild(zz); }
   if (!sleep && zz) zz.remove();
+  paintLunch(id);
   paintBubble(id);
   paintSay();
 }
@@ -319,7 +333,16 @@ function closeSay(keepFocus) { exitWalk(keepFocus); }
 function addChat(m) {
   if (S.chat.some((c) => c.id === m.id)) return;
   S.chat.push(m); S.chat.sort((a, b) => (typeof a.id === "number" && typeof b.id === "number") ? a.id - b.id : String(a.created_at).localeCompare(String(b.created_at))); if (S.chat.length > 1000) S.chat = S.chat.slice(-1000);
-  if (m.kind === "system") { if (m.member !== S.me) toast(m.text); }
+  if (m.kind === "lunch") {
+    const fresh = Date.now() - new Date(m.created_at).getTime() < LUNCH_HOURS * 3600e3, prev = S.lunch[m.member];
+    if (fresh && (!prev || new Date(prev.at) <= new Date(m.created_at))) {
+      const live = Date.now() - new Date(m.created_at).getTime() < 60000 && m.member !== S.me && S.ready;
+      if (live && !spinning && document.querySelector("#village .wheel")) spinTo(MENUS.indexOf(m.text) >= 0 ? MENUS.indexOf(m.text) : 0, () => showLunch(m.member, m.text, m.created_at));
+      else showLunch(m.member, m.text, m.created_at);
+      if (live && byId(m.member)) toast("🍽 " + byId(m.member).name + " 님이 점심 룰렛을 돌렸어요 · 추천메뉴 " + m.text);
+    }
+  }
+  else if (m.kind === "system") { if (m.member !== S.me) toast(m.text); }
   else if (byId(m.member)) { S.bubbles[m.member] = { text: m.text, until: Date.now() + 8000 }; paintBubble(m.member); }
   if (S.card && (S.card.type === "plaza" || S.card === "log")) renderCard();
 }
@@ -543,6 +566,8 @@ function sfx(kind, vol) {
     else if (kind === "land") tone("sine", 150, 60, 0, 0.09, v * 0.8);
     else if (kind === "check") { tone("triangle", 988, 0, 0, 0.12, v); tone("triangle", 1319, 0, 0.08, 0.2, v); tone("sine", 1976, 0, 0.15, 0.28, v * 0.45); }
     else if (kind === "add") tone("triangle", 660, 990, 0, 0.1, v * 0.6);
+    else if (kind === "tick") tone("square", 1800, 0, 0, 0.025, v * 0.35);
+    else if (kind === "note") { tone("sine", 784, 0, 0, 0.14, v); tone("sine", 1047, 0, 0.12, 0.22, v); }
   } catch (e) {}
 }
 
@@ -587,7 +612,9 @@ function paintBoards() {
     if (!mine && form) form.remove();
     if (form) { const b = form.querySelector(".vsz"); b.textContent = S.size; b.className = "vsz " + S.size; b.title = "크기 " + S.size + " · " + XP[S.size] + " XP (누르면 바뀌어요)"; b.setAttribute("aria-label", b.title); }
     const items = boardTasks(m.id), nDone = doneTasks(m.id).length;
-    const html = '<ul>' + items.map((t) => '<li class="vt' + (t.done ? " done" : "") + (t.id === S.justDone ? " fresh" : "") + '">' +
+    const notes = mine ? unreadNotes() : [];
+    const html = (notes.length ? '<div class="vnotes">' + notes.slice(0, 3).map((n) => '<button type="button" class="vnote" data-note="' + n.id + '">✉ <b>' + esc((byId(n.sender) || { name: "?" }).name) + "</b> 님의 쪽지</button>").join("") + (notes.length > 3 ? '<button type="button" class="vnote more" data-act="inbox">+' + (notes.length - 3) + "통 더</button>" : "") + "</div>" : "") +
+      '<ul>' + items.map((t) => '<li class="vt' + (t.done ? " done" : "") + (t.id === S.justDone ? " fresh" : "") + '">' +
       (mine ? '<label><input type="checkbox" data-toggle="' + esc(t.id) + '"' + (t.done ? " checked" : "") + '><i class="vck" aria-hidden="true"></i>' : '<i class="vdot" aria-hidden="true"></i>') +
       '<span class="vtt" title="' + esc(t.title) + '">' + esc(t.title) + '</span><em class="vs ' + t.size + '">' + t.size + "</em>" + (mine ? "</label>" + '<button type="button" class="vdel" data-del="' + esc(t.id) + '" aria-label="' + esc(t.title) + ' 지우기">✕</button>' : "") + "</li>").join("") + "</ul>" +
       (nDone ? '<button type="button" class="vdone" data-done="' + m.id + '">✓ 완료한 할 일 <b>' + nDone + "</b></button>" : "");
@@ -633,6 +660,172 @@ function doneHTML(id) {
     "</div>";
 }
 
+/* ---------- 하늘 위 시계 · 날씨 · 퇴근 (웹) ---------- */
+const WEATHER = { name: "서울", lat: 37.5665, lon: 126.978 }; // Open-Meteo (키 필요 없음)
+const OFF_HOUR = 18, ON_HOUR = 9;
+const WX = (c) => c === 0 ? ["☀️", "맑음"] : c <= 2 ? ["🌤️", "구름 조금"] : c === 3 ? ["☁️", "흐림"] : c <= 48 ? ["🌫️", "안개"] : c <= 57 ? ["🌦️", "이슬비"] : c <= 67 ? ["🌧️", "비"] : c <= 77 ? ["❄️", "눈"] : c <= 82 ? ["🌧️", "소나기"] : c <= 86 ? ["🌨️", "눈"] : ["⛈️", "뇌우"];
+let wx = null;
+async function loadWeather() {
+  try {
+    const u = "https://api.open-meteo.com/v1/forecast?latitude=" + WEATHER.lat + "&longitude=" + WEATHER.lon + "&current=temperature_2m,weather_code&hourly=precipitation_probability&daily=precipitation_probability_max,precipitation_sum,temperature_2m_max,temperature_2m_min&timezone=Asia%2FSeoul&forecast_days=1";
+    const r = await fetch(u); if (!r.ok) throw 0; wx = await r.json(); paintSky(true);
+  } catch (e) { wx = wx || { failed: true }; paintSky(true); }
+}
+function skyHTML() {
+  const now = new Date(), d = now.getDay(), h = now.getHours(), m = now.getMinutes();
+  const time = String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+  const date = (now.getMonth() + 1) + "월 " + now.getDate() + "일 " + "일월화수목금토"[d] + "요일";
+  let weather = "날씨를 불러오는 중…", rain = "";
+  if (wx && wx.current) {
+    const [ic, nm] = WX(wx.current.weather_code), t = Math.round(wx.current.temperature_2m), dl = wx.daily || {};
+    weather = ic + " " + nm + " " + t + "°" + (dl.temperature_2m_max ? ' <span class="sk-dim">' + Math.round(dl.temperature_2m_min[0]) + "° / " + Math.round(dl.temperature_2m_max[0]) + "°</span>" : "");
+    const pmax = dl.precipitation_probability_max ? dl.precipitation_probability_max[0] : 0, psum = dl.precipitation_sum ? dl.precipitation_sum[0] : 0;
+    let when = "";
+    if (wx.hourly) { const i = wx.hourly.time.findIndex((tt, k) => new Date(tt).getHours() >= h && wx.hourly.precipitation_probability[k] >= 50); if (i >= 0) when = new Date(wx.hourly.time[i]).getHours() + "시쯤 "; }
+    rain = (pmax >= 50 || psum >= 1) ? "☔ 오늘 비 소식 있어요 · " + when + "강수확률 " + pmax + "%" : "🌂 오늘 비 소식 없어요 · 강수확률 " + pmax + "%";
+  } else if (wx && wx.failed) weather = "날씨를 불러오지 못했어요";
+  let off, pct = 0;
+  if (d === 0 || d === 6) off = "🌿 오늘은 주말이에요";
+  else if (h < ON_HOUR) off = "☕ 출근 전이에요 · 퇴근 18:00";
+  else if (h >= OFF_HOUR) { off = "🎉 퇴근 시간! 오늘도 수고했어요"; pct = 100; }
+  else { const left = (OFF_HOUR * 60) - (h * 60 + m); off = "🏃 퇴근까지 <b>" + (Math.floor(left / 60) ? Math.floor(left / 60) + "시간 " : "") + (left % 60) + "분</b>"; pct = Math.round(((h * 60 + m) - ON_HOUR * 60) / ((OFF_HOUR - ON_HOUR) * 60) * 100); }
+  return '<div class="sk-time">' + time + '</div><div class="sk-date">' + date + " · " + WEATHER.name + '</div><div class="sk-wx">' + weather + "</div>" + (rain ? '<div class="sk-rain">' + rain + "</div>" : "") +
+    '<div class="sk-off">' + off + "</div>" + (pct > 0 && pct < 100 ? '<span class="sk-bar"><i style="width:' + pct + '%"></i></span>' : "");
+}
+function paintSky(force) {
+  if (!WEB) return;
+  let el = document.getElementById("sky");
+  if (!el) { el = document.createElement("div"); el.id = "sky"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "off"); document.body.appendChild(el); }
+  const html = skyHTML(); if (force || el._h !== html) { el._h = html; el.innerHTML = html; }
+}
+if (WEB) { setInterval(() => paintSky(), 10000); setInterval(loadWeather, 30 * 60000); }
+
+/* ---------- 점심 룰렛 (웹: 마을 표지판 위) ---------- */
+const MENUS = ["닭갈비", "쌀국수", "김치찌개", "보리밥", "부대찌개", "돈까스", "마라탕", "분식", "샌드위치", "세무서급식", "햄버거", "중국집", "카레", "콩나물국밥", "순대국", "고양이부엌", "배민"];
+const LUNCH_HOURS = 3; // 추천메뉴가 캐릭터 옆에 떠 있는 시간
+const WHEEL_COLORS = ["#F7D58B", "#F2A58C", "#BFE3A3", "#9CCBE8", "#F2B8CF", "#D9C4F0", "#FCE38A", "#A8DCC8"];
+S.lunch = {};
+let wheelRot = 0, spinning = false;
+function wheelSVG() {
+  const n = MENUS.length, seg = 360 / n, R = 64, pt = (a, r) => [(r * Math.sin(a * Math.PI / 180)).toFixed(2), (-r * Math.cos(a * Math.PI / 180)).toFixed(2)];
+  const slices = MENUS.map((name, i) => {
+    const a0 = i * seg, a1 = a0 + seg, [x0, y0] = pt(a0, R), [x1, y1] = pt(a1, R), mid = a0 + seg / 2;
+    return '<path d="M0,0 L' + x0 + "," + y0 + " A" + R + "," + R + " 0 0 1 " + x1 + "," + y1 + ' Z" fill="' + WHEEL_COLORS[i % WHEEL_COLORS.length] + '" stroke="#6E4424" stroke-width=".8"/>' +
+      '<text x="59" y="2.6" text-anchor="end" transform="rotate(' + (mid - 90).toFixed(2) + ')">' + name + "</text>";
+  }).join("");
+  return '<svg class="wheel-svg" viewBox="-72 -78 144 152" aria-hidden="true"><circle r="69" fill="#6E4424"/><circle r="66.5" fill="#FFF4DC"/><g class="wheel" style="transform:rotate(' + wheelRot + 'deg)">' + slices + "</g>" +
+    '<path d="M-7,-74 L7,-74 L0,-60 Z" fill="#E05A4F" stroke="#4E2E17" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+}
+function buildRoulette() {
+  const box = document.querySelector("#village .vroul"); if (!box || box._built) return; box._built = true;
+  box.innerHTML = '<div class="roul-title">🍽 오늘 뭐 먹지?</div>' + wheelSVG() + '<button type="button" class="roul-hub" data-act="spin" aria-label="점심 룰렛 돌리기">돌리기</button>';
+}
+function spinTo(index, done) {
+  const n = MENUS.length, seg = 360 / n, target = -(index * seg + seg / 2);
+  const start = wheelRot, end = start + 360 * 5 + (((target - start) % 360) + 360) % 360, dur = 4200, t0 = performance.now();
+  const g = document.querySelector("#village .wheel"); spinning = true;
+  let lastSeg = Math.floor(start / seg);
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3.2);
+    wheelRot = start + (end - start) * e; if (g) g.style.transform = "rotate(" + wheelRot + "deg)";
+    const s = Math.floor(wheelRot / seg); if (s !== lastSeg) { lastSeg = s; sfx("tick", 0.5); }
+    if (p < 1) requestAnimationFrame(step); else { wheelRot = end % 360; if (g) g.style.transform = "rotate(" + wheelRot + "deg)"; spinning = false; done && done(); }
+  };
+  requestAnimationFrame(step);
+}
+async function spinLunch() {
+  if (!S.me) { openCard("who"); return; }
+  if (spinning) return;
+  const i = Math.floor(Math.random() * MENUS.length), me = S.me;
+  spinTo(i, async () => {
+    sfx("check");
+    try { const row = await store.sendChat({ member: me, text: MENUS[i], kind: "lunch" }); if (row) addChat(row); else showLunch(me, MENUS[i], new Date().toISOString()); }
+    catch (e) { showLunch(me, MENUS[i], new Date().toISOString()); }
+  });
+}
+function showLunch(member, menu, at) { S.lunch[member] = { menu, at }; if (PAL[member]) paintPal(member); }
+function paintLunch(id) {
+  const el = PAL[id]; if (!el) return;
+  const l = S.lunch[id], live = l && Date.now() - new Date(l.at).getTime() < LUNCH_HOURS * 3600e3;
+  let tag = el.querySelector(".lunchtag");
+  if (!live) { if (tag) tag.remove(); return; }
+  if (!tag) { tag = document.createElement("span"); tag.className = "lunchtag"; el.appendChild(tag); }
+  const html = '<small>🍽 추천메뉴</small><b>' + esc(l.menu) + "</b>";
+  if (tag._h !== html) { tag._h = html; tag.innerHTML = html; tag.classList.remove("pop"); void tag.offsetWidth; tag.classList.add("pop"); }
+}
+
+/* ---------- 쪽지 (글 + 그림) ---------- */
+const myInbox = () => (S.notes || []).filter((n) => n.recipient === S.me);
+const unreadNotes = () => myInbox().filter((n) => !n.read_at);
+const seenNotes = new Set();
+function announceNewNotes() {
+  const first = !announceNewNotes.ready; announceNewNotes.ready = true;
+  unreadNotes().forEach((n) => { if (seenNotes.has(n.id)) return; seenNotes.add(n.id); if (!first && byId(n.sender)) { toast("✉ " + byId(n.sender).name + " 님이 쪽지를 보냈어요! 내 집 위를 확인해 보세요."); sfx("note"); } });
+}
+S.pen = { color: "#3B2A1E", size: 4, eraser: false };
+function composeHTML(to) {
+  const m = byId(to), cols = ["#3B2A1E", "#E05A4F", "#F2A03A", "#F5C451", "#4F9B58", "#4F86C6", "#9B6FD1", "#F27A9B"];
+  return '<div class="card wide hit compose" role="dialog" aria-label="' + esc(m.name) + ' 님에게 쪽지"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
+    '<div class="prof" style="align-items:center">' + avatarHTML(m.id, closetOf(m.id).wear, "mid") + '<div class="pinfo"><p class="big" style="margin:0">✉ ' + esc(m.name) + ' 님에게 쪽지</p><p class="muted" style="margin:2px 0 0">글을 쓰거나, 아래 종이에 마우스로 그림을 그려요.</p>' +
+    '<div class="pbtns"><button class="ghost sm" data-goroom="' + m.id + '">🏠 ' + esc(m.place) + " 구경</button></div></div></div>" +
+    '<label class="sr" for="noteText">쪽지 내용</label><textarea id="noteText" maxlength="500" rows="3" placeholder="하고 싶은 말을 적어요 (500자까지)"></textarea>' +
+    '<div class="pad"><canvas id="noteCanvas" width="720" height="320" aria-label="그림 그리는 종이"></canvas></div>' +
+    '<div class="tools" role="toolbar" aria-label="그리기 도구">' + cols.map((c) => '<button type="button" class="pen' + (!S.pen.eraser && S.pen.color === c ? " on" : "") + '" data-pen="' + c + '" style="--c:' + c + '" aria-label="색 ' + c + '"></button>').join("") +
+    '<span class="tsep"></span>' + [[3, "가는 펜"], [7, "굵은 펜"]].map(([s, nm]) => '<button type="button" class="psize' + (S.pen.size === s ? " on" : "") + '" data-pensize="' + s + '" title="' + nm + '" aria-label="' + nm + '"><i style="width:' + (s + 2) + "px;height:" + (s + 2) + 'px"></i></button>').join("") +
+    '<button type="button" class="ghost sm' + (S.pen.eraser ? " on" : "") + '" data-act="eraser">지우개</button><button type="button" class="ghost sm" data-act="clearPad">모두 지우기</button></div>' +
+    '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:10px"><button class="ghost" data-act="close">취소</button><button class="primary" data-act="sendNote" data-to="' + m.id + '">✉ 보내기</button></div></div>';
+}
+function syncTools() {
+  document.querySelectorAll(".compose [data-pen]").forEach((b) => b.classList.toggle("on", !S.pen.eraser && b.dataset.pen === S.pen.color));
+  document.querySelectorAll(".compose [data-pensize]").forEach((b) => b.classList.toggle("on", +b.dataset.pensize === S.pen.size));
+  const er = document.querySelector('.compose [data-act="eraser"]'); if (er) er.classList.toggle("on", S.pen.eraser);
+}
+function initPad() {
+  const cv = document.getElementById("noteCanvas"); if (!cv || cv._init) return; cv._init = true;
+  const ctx = cv.getContext("2d"); ctx.fillStyle = "#FFFDF6"; ctx.fillRect(0, 0, cv.width, cv.height); ctx.lineCap = "round"; ctx.lineJoin = "round";
+  let last = null;
+  const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  const line = (a, b) => { ctx.strokeStyle = S.pen.eraser ? "#FFFDF6" : S.pen.color; ctx.lineWidth = (S.pen.eraser ? S.pen.size * 4 : S.pen.size) * 2; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); cv._dirty = true; };
+  cv.addEventListener("pointerdown", (e) => { e.preventDefault(); cv.setPointerCapture(e.pointerId); last = pos(e); line(last, [last[0] + 0.1, last[1] + 0.1]); });
+  cv.addEventListener("pointermove", (e) => { if (!last) return; const p = pos(e); line(last, p); last = p; });
+  const up = () => { last = null; }; cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+}
+async function sendNote(to) {
+  const ta = document.getElementById("noteText"), cv = document.getElementById("noteCanvas");
+  const text = (ta ? ta.value : "").trim().slice(0, 500), drawing = cv && cv._dirty ? cv.toDataURL("image/png") : null;
+  if (!text && !drawing) { toast("글을 쓰거나 그림을 그려 주세요."); return; }
+  if (store.mode === "remote" && S.notesMissing) { toast("쪽지함이 아직 준비되지 않았어요. setup.sql의 8번(쪽지)을 Supabase에서 한 번 실행해 주세요."); return; }
+  const btn = document.querySelector('[data-act="sendNote"]'); if (btn) btn.disabled = true;
+  try {
+    const row = await store.sendNote({ sender: S.me, recipient: to, text, drawing });
+    if (row) S.notes = [row].concat(S.notes || []);
+    sfx("add"); closeCard(); toast("✉ " + byId(to).name + " 님에게 쪽지를 보냈어요!");
+  } catch (e) { if (btn) btn.disabled = false; toast("쪽지를 보내지 못했어요. 쪽지함 준비(setup.sql 8번)가 됐는지 확인해 주세요."); }
+}
+function noteHTML(id) {
+  const n = (S.notes || []).find((x) => String(x.id) === String(id)); if (!n) return "";
+  const from = byId(n.sender), to = byId(n.recipient), mine = n.recipient === S.me, d = new Date(n.created_at);
+  return '<div class="card wide hit" role="dialog" aria-label="쪽지"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
+    '<div class="prof" style="align-items:center">' + avatarHTML(from.id, closetOf(from.id).wear, "mid") + '<div class="pinfo"><p class="big" style="margin:0">✉ ' + esc(from.name) + " 님의 쪽지</p>" +
+    '<p class="muted" style="margin:2px 0 0">' + (mine ? "" : esc(to.name) + " 님에게 · ") + (d.getMonth() + 1) + "월 " + d.getDate() + "일 " + hhmm(n.created_at) + "</p></div></div>" +
+    '<div class="letter">' + (n.text ? '<p class="ltext">' + esc(n.text).replace(/\n/g, "<br>") + "</p>" : "") + (n.drawing && /^data:image\/png;base64,/.test(n.drawing) ? '<img class="ldraw" alt="' + esc(from.name) + ' 님이 그린 그림" src="' + n.drawing + '">' : "") + "</div>" +
+    '<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:10px"><button class="ghost" data-act="inbox">✉ 쪽지함</button>' + (mine && from.id !== S.me ? '<button class="primary" data-compose="' + from.id + '">↩ 답장하기</button>' : "") + "</div></div>";
+}
+function inboxHTML() {
+  const inbox = myInbox(), sent = (S.notes || []).filter((n) => n.sender === S.me && n.recipient !== S.me);
+  const row = (n, who) => { const m = byId(who); return '<li class="' + (!n.read_at && n.recipient === S.me ? "unread" : "") + '"><button type="button" data-note="' + n.id + '"><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> " + esc((n.text || "🎨 그림 쪽지").slice(0, 40)) + (n.drawing && n.text ? " 🎨" : "") + '</span><time>' + hhmm(n.created_at) + "</time></button></li>"; };
+  return '<div class="card wide hit" role="dialog" aria-label="쪽지함"><button class="x" data-act="close" aria-label="닫기">✕</button><p class="big">✉ 쪽지함</p>' +
+    (store.mode === "remote" && S.notesMissing ? '<p class="note">쪽지함이 아직 준비되지 않았어요. setup.sql의 8번(쪽지)을 Supabase SQL Editor에서 한 번 실행해 주세요.</p>' : "") +
+    "<h3>받은 쪽지</h3>" + (inbox.length ? '<ul class="inbox">' + inbox.map((n) => row(n, n.sender)).join("") + "</ul>" : '<p class="empty">아직 받은 쪽지가 없어요.</p>') +
+    "<h3>보낸 쪽지</h3>" + (sent.length ? '<ul class="inbox">' + sent.slice(0, 20).map((n) => row(n, n.recipient)).join("") + "</ul>" : '<p class="empty">동료의 집을 누르면 쪽지를 보낼 수 있어요.</p>') + "</div>";
+}
+async function openNote(id) {
+  const n = (S.notes || []).find((x) => String(x.id) === String(id)); if (!n) return;
+  if (S.say) exitWalk(true);
+  openCard({ type: "note", id: n.id });
+  if (n.recipient === S.me && !n.read_at) { n.read_at = new Date().toISOString(); paintBoards(); try { await store.readNote(n.id); } catch (e) {} }
+}
+
 /* ---------- 도움말 ---------- */
 function helpHTML() {
   const sec = (icon, title, items) => '<section class="hsec"><h3><span class="hic">' + icon + "</span>" + title + "</h3><ul>" + items.map((x) => "<li>" + x + "</li>").join("") + "</ul></section>";
@@ -669,6 +862,15 @@ function helpHTML() {
       "채팅창이 비어 있을 때 " + k("←") + " " + k("→") + "로 걷고, " + k("↑") + "로 점프해요. 채팅창 밖에서는 " + k("스페이스") + ", 또는 「⤴ 점프」 버튼도 돼요.",
       "내 점프와 걷기는 동료들 화면에도 그대로 보여요.",
     ]) +
+    sec("✉", "쪽지", [
+      (WEB ? "<b>동료의 집을 누르면</b> 그 사람에게 쪽지를 쓸 수 있어요. " : "") + "동료 캐릭터를 눌러 「✉ 쪽지 보내기」로도 써요.",
+      "글을 쓰고, 아래 종이에 <b>마우스로 그림</b>도 그릴 수 있어요. 색·굵기·지우개를 골라 보세요.",
+      "쪽지가 오면 " + (WEB ? "<b>내 집 위 할 일 맨 위</b>에 「✉ ○○ 님의 쪽지」가 떠요. 누르면 읽고 답장할 수 있어요. " : "알림이 떠요. ") + "지난 쪽지는 내 카드의 「✉ 쪽지함」에 있어요.",
+    ]) +
+    (WEB ? sec("🍽", "점심 룰렛 · 하늘 시계", [
+      "마을 표지판 위 룰렛의 「돌리기」를 누르면 오늘의 <b>추천메뉴</b>가 나와요. 돌린 사람 옆에 " + LUNCH_HOURS + "시간 동안 떠 있고, 동료들 화면에서도 같이 돌아가요.",
+      "하늘 가운데에는 지금 시각, " + WEATHER.name + " 날씨, 오늘 비 소식, <b>퇴근(18시)까지 남은 시간</b>이 보여요.",
+    ]) : "") +
     sec("👕", "옷가게와 옷장", [
       (WEB ? "마을의 <b>분홍 옷가게</b>나 " : "") + "「👕 옷가게」 버튼으로 들어가요. 그림을 누르면 거울 앞에서 먼저 입어 볼 수 있어요.",
       "맨 위 <b>⭐ 직업 전용 옷</b>은 나만 살 수 있어요. 🔒 표시가 붙은 옷은 그 레벨이 되면 열려요.",
@@ -688,6 +890,12 @@ function renderCard() {
       MEMBERS.map((m) => '<button data-me="' + m.id + '"><img src="' + IMG(m.id) + '" alt=""><b>' + esc(m.name) + '</b><span class="muted" style="margin:0">' + esc(m.cls) + "</span></button>").join("") + "</div></div>";
   } else if (c === "help") {
     html = helpHTML();
+  } else if (c && c.type === "compose") {
+    html = composeHTML(c.id);
+  } else if (c && c.type === "note") {
+    html = noteHTML(c.id);
+  } else if (c === "inbox") {
+    html = inboxHTML();
   } else if (c === "who") {
     html = '<div class="card hit center" role="dialog" aria-label="사람 바꾸기"><button class="x" data-act="close" aria-label="닫기">✕</button><p class="big">누구로 바꿀까요?</p><div class="pick">' +
       MEMBERS.map((m) => '<button data-me="' + m.id + '"><img src="' + IMG(m.id) + '" alt=""><b>' + esc(m.name) + "</b></button>").join("") + "</div></div>";
@@ -697,6 +905,7 @@ function renderCard() {
     const rows = S.chat.map((x) => {
       const day = fmtDay(x.created_at), sep = day !== lastDay ? '<li class="day">' + day + "</li>" : ""; lastDay = day;
       const m = byId(x.member);
+      if (x.kind === "lunch" && m) return sep + '<li class="sys">🍽 ' + esc(m.name) + " 님의 룰렛 추천메뉴: " + esc(x.text) + " <time>" + hhmm(x.created_at) + "</time></li>";
       if (x.kind === "system" || !m) return sep + '<li class="sys">' + esc(x.text) + " <time>" + hhmm(x.created_at) + "</time></li>";
       return sep + '<li class="' + (x.member === S.me ? "mine" : "") + '"><img src="' + IMG(m.id) + '" alt=""><div><b>' + esc(m.name) + "</b><time>" + hhmm(x.created_at) + "</time><p>" + esc(x.text) + "</p></div></li>";
     }).join("");
@@ -728,7 +937,7 @@ function renderCard() {
       "<h3>팀원</h3><ul class=\"feed\">" + MEMBERS.map((m) => { const w = weekTasks(m.id, thisWeek()), d = w.filter((t) => t.done).length, lv = levelInfo(xpOf(m.id)).lv;
         return '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> Lv." + lv + " " + esc(titleOf(m, lv, S.routes[m.id])) + ' <span class="muted">· ' + d + "/" + w.length + (asleep(m.id) ? " · 자리 비움" : "") + "</span></span></li>"; }).join("") + "</ul>" +
       '<h3>최근 이야기<button class="ghost" data-act="openLog" style="margin-left:auto">전체 기록 보기</button></h3>' +
-      (feed.length ? '<ul class="feed">' + feed.map((x) => { const m = byId(x.member); return x.kind === "system" || !m ? '<li class="sys">· ' + esc(x.text) + "</li>" : '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> " + esc(x.text) + ' <span class="muted">' + hhmm(x.created_at) + "</span></span></li>"; }).join("") + "</ul>" : '<p class="empty">아직 조용해요. 먼저 인사해 볼까요?</p>') + "</div>";
+      (feed.length ? '<ul class="feed">' + feed.map((x) => { const m = byId(x.member); if (x.kind === "lunch" && m) return '<li class="sys">· 🍽 ' + esc(m.name) + " 님의 룰렛 추천메뉴: " + esc(x.text) + "</li>"; return x.kind === "system" || !m ? '<li class="sys">· ' + esc(x.text) + "</li>" : '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> " + esc(x.text) + ' <span class="muted">' + hhmm(x.created_at) + "</span></span></li>"; }).join("") + "</ul>" : '<p class="empty">아직 조용해요. 먼저 인사해 볼까요?</p>') + "</div>";
   } else if (c && c.type === "room") {
     const m = byId(c.id), route = S.routes[m.id], info = levelInfo(xpOf(m.id)), mine = m.id === S.me, edit = S.edit && S.edit.id === m.id;
     html = '<div class="card wide hit" role="dialog" aria-label="' + esc(m.place) + '"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
@@ -746,6 +955,7 @@ function renderCard() {
       '<span class="cls">' + esc(m.cls) + "</span>" +
       '<div class="statbar" style="margin-top:12px"><span>❤ HP</span><i class="hpbar"><b style="width:' + Math.round(st.hp / st.hpMax * 100) + "%" + (low ? ";background:#E07A2F" : "") + '"></b></i><span class="num">' + st.hp + " / " + st.hpMax + "</span></div>" +
       '<div class="statbar"><span>💧 MP</span><i class="mpbar"><b style="width:' + Math.round(st.mp / st.mpMax * 100) + '%"></b></i><span class="num">' + st.mp + " / " + st.mpMax + "</span></div>" +
+      (S.me ? '<div class="pbtns"><button class="ghost sm" data-compose="' + m.id + '">✉ 쪽지 보내기</button></div>' : "") +
       "</div></div></div>";
   } else if (c && c.type === "done") {
     html = doneHTML(c.id);
@@ -760,7 +970,7 @@ function renderCard() {
         '<p class="muted" style="margin:4px 0 0">' + (info.lv < 20 ? info.into + " / " + info.need + " XP" : "만렙") + (nx ? " · 다음 Lv." + nx.lv + " " + esc(nx.title) : "") + "</p>" +
         '<span class="xp"><i style="width:' + info.pct + '%"></i></span>' +
         '<p class="gold">🪙 ' + goldOf(m.id) + ' 골드 <span class="muted">· 모은 XP만큼 생겨요</span></p>' +
-        '<div class="pbtns"><button class="ghost" data-goroom="' + m.id + '">🏠 ' + (mine ? "내 방" : "방 구경") + "</button>" + (mine ? '<button class="ghost" data-act="openShop">👕 옷가게</button>' : "") + "</div>" +
+        '<div class="pbtns"><button class="ghost" data-goroom="' + m.id + '">🏠 ' + (mine ? "내 방" : "방 구경") + "</button>" + (mine ? '<button class="ghost" data-act="openShop">👕 옷가게</button><button class="ghost" data-act="inbox">✉ 쪽지함' + (unreadNotes().length ? ' <b class="nbadge">' + unreadNotes().length + "</b>" : "") + "</button>" : "") + "</div>" +
       "</div></div>" +
       statPanel(m.id, mine) +
       closetPanel(m.id, mine) +
@@ -779,6 +989,7 @@ function renderCard() {
   const prev = box.querySelector(".card"), prevScroll = prev ? prev.scrollTop : 0, prevLog = box.querySelector(".chatlog"), logAtBottom = prevLog ? prevLog.scrollHeight - prevLog.scrollTop - prevLog.clientHeight < 30 : true, logScroll = prevLog ? prevLog.scrollTop : 0, sameKind = renderCard._k === JSON.stringify(c);
   const sayVal = document.getElementById("logIn") ? document.getElementById("logIn").value : null;
   box.innerHTML = html; renderCard._k = JSON.stringify(c);
+  initPad();
   const card = box.querySelector(".card");
   if (card && sameKind) card.scrollTop = prevScroll;
   const lg = box.querySelector(".chatlog"); if (lg) lg.scrollTop = (sameKind && !logAtBottom) ? logScroll : lg.scrollHeight;
@@ -792,15 +1003,16 @@ function renderCard() {
 /* ---------- 데이터 ---------- */
 let lastSig = "", loadFailToast = 0;
 async function reload(force) {
-  try { const d = await store.load(); S.tasks = d.tasks || []; S.routes = d.routes || {}; S.rooms = await store.loadRooms(); S.skills = await store.loadSkills(); }
+  try { const d = await store.load(); S.tasks = d.tasks || []; S.routes = d.routes || {}; S.rooms = await store.loadRooms(); S.skills = await store.loadSkills(); try { S.notes = await store.loadNotes(); } catch (e) { S.notes = S.notes || []; } }
   catch (e) { if (Date.now() - loadFailToast > 60000) { loadFailToast = Date.now(); toast("팀 기록을 불러오지 못했어요. 인터넷이나 연결 설정을 확인해 주세요."); } return; }
   announceNewSkills();
-  const sig = JSON.stringify([S.tasks, S.routes, S.rooms, S.skills]);
+  announceNewNotes();
+  const sig = JSON.stringify([S.tasks, S.routes, S.rooms, S.skills, (S.notes || []).map((n) => n.id + (n.read_at ? "r" : ""))]);
   if (!force && sig === lastSig) return; // 바뀐 게 없으면 다시 그리지 않아요 (깜빡임 방지)
   lastSig = sig;
   if (document.activeElement && document.activeElement.id === "newTask") S.focusInput = true;
   paintAll();
-  if (S.card && S.card !== "settings" && S.card !== "quit" && !S.edit && !roomDrag) renderCard();
+  if (S.card && S.card !== "settings" && S.card !== "quit" && S.card.type !== "compose" && !S.edit && !roomDrag) renderCard();
 }
 async function act(fn) { try { await fn(); } catch (e) { toast("저장하지 못했어요. 잠시 후 다시 해 주세요."); } await reload(true); }
 async function toggleTask(id, done) {
@@ -829,7 +1041,16 @@ document.addEventListener("click", async (e) => {
   const toggleCard = (c) => { if (S.say) exitWalk(true); if (S.card && S.card.type === c.type && S.card.id === c.id) closeCard(); else { S.week = thisWeek(); S.edit = null; S.tryOn = null; openCard(c); } };
   if (pal) { toggleCard({ type: "person", id: pal.dataset.pal }); return; }
   const house = e.target.closest("[data-house],[data-goroom],[data-person]");
-  if (house) { if (house.dataset.person) toggleCard({ type: "person", id: house.dataset.person }); else toggleCard({ type: "room", id: house.dataset.house || house.dataset.goroom }); return; }
+  if (house) {
+    if (house.dataset.person) toggleCard({ type: "person", id: house.dataset.person });
+    else if (house.dataset.house && S.me && house.dataset.house !== S.me) toggleCard({ type: "compose", id: house.dataset.house }); // 동료의 집 → 쪽지 쓰기
+    else toggleCard({ type: "room", id: house.dataset.house || house.dataset.goroom });
+    return;
+  }
+  const cp = e.target.closest("[data-compose]"); if (cp) { if (!S.me) { openCard("who"); return; } if (S.say) exitWalk(true); openCard({ type: "compose", id: cp.dataset.compose }); return; }
+  const nt = e.target.closest("[data-note]"); if (nt) { openNote(nt.dataset.note); return; }
+  const pn = e.target.closest("[data-pen],[data-pensize]");
+  if (pn) { if (pn.dataset.pen) { S.pen.color = pn.dataset.pen; S.pen.eraser = false; } else S.pen.size = +pn.dataset.pensize; syncTools(); return; }
   const dn = e.target.closest("[data-done]"); if (dn) { toggleCard({ type: "done", id: dn.dataset.done }); return; }
   const vz = e.target.closest("[data-vsize]"); if (vz) { S.size = { S: "M", M: "L", L: "S" }[S.size] || "M"; paintBoards(); const i = vz.closest("form").querySelector(".vin"); if (i) i.focus(); return; }
   if (e.target.closest("[data-shop]")) { if (!S.me) { openCard("who"); return; } toggleCard({ type: "shop" }); return; }
@@ -864,6 +1085,11 @@ document.addEventListener("click", async (e) => {
   else if (a === "openShop") { if (!S.me) { openCard("who"); return; } if (S.card && S.card.type === "shop" && el.closest(".ctrl")) closeCard(); else { S.tryOn = null; openCard({ type: "shop" }); } }
   else if (a === "clearTry") { S.tryOn = null; renderCard(); }
   else if (a === "jump") jumpMe();
+  else if (a === "spin") spinLunch();
+  else if (a === "inbox") { if (!S.me) { openCard("who"); return; } if (S.say) exitWalk(true); openCard("inbox"); }
+  else if (a === "eraser") { S.pen.eraser = !S.pen.eraser; syncTools(); }
+  else if (a === "clearPad") { const cv = document.getElementById("noteCanvas"); if (cv) { const x = cv.getContext("2d"); x.fillStyle = "#FFFDF6"; x.fillRect(0, 0, cv.width, cv.height); cv._dirty = false; } }
+  else if (a === "sendNote") sendNote(el.dataset.to);
   else if (a === "help") { if (S.say) exitWalk(true); if (S.card === "help") closeCard(); else openCard("help"); }
   else if (a === "minimize") { if (S.walk) exitWalk(); if (S.say) closeSay(); D.minimize(); }
   else if (a === "miniFromQuit") { closeCard(); setMini(true); }
@@ -965,6 +1191,10 @@ function startLive() {
   if (!S.me) renderCard();
   await reload();
   try { S.chat = await store.loadChat(); } catch (e) { S.chat = []; }
+  S.chat.filter((m) => m.kind === "lunch" && byId(m.member) && Date.now() - new Date(m.created_at).getTime() < LUNCH_HOURS * 3600e3).forEach((m) => { S.lunch[m.member] = { menu: m.text, at: m.created_at }; });
+  MEMBERS.forEach((m) => paintLunch(m.id));
+  S.ready = true;
+  if (WEB) { paintSky(true); loadWeather(); }
   startLive();
   if (store.mode === "local") setTimeout(() => toast("체험 모드예요. 트레이 아이콘 → 「팀 연결 설정」에서 팀과 연결할 수 있어요."), 1500);
   lastSig = JSON.stringify([S.tasks, S.routes, S.rooms, S.skills]);

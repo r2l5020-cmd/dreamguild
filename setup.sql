@@ -93,3 +93,19 @@ alter table dg_skills enable row level security;
 drop policy if exists "dg_skills open" on dg_skills;
 create policy "dg_skills open" on dg_skills for all to anon, authenticated using (true) with check (true);
 do $$ begin alter publication supabase_realtime add table dg_skills; exception when duplicate_object then null; end $$;
+
+-- 8) 쪽지 (글 + 손그림). 그림은 PNG data URL로 저장해요.
+create table if not exists dg_notes (
+  id bigint generated always as identity primary key,
+  sender text not null,
+  recipient text not null,
+  text text not null default '' check (char_length(text) <= 500),
+  drawing text check (drawing is null or char_length(drawing) <= 600000),
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists dg_notes_recipient_idx on dg_notes (recipient, id desc);
+alter table dg_notes enable row level security;
+drop policy if exists "dg_notes open" on dg_notes;
+create policy "dg_notes open" on dg_notes for all to anon, authenticated using (true) with check (true);
+do $$ begin alter publication supabase_realtime add table dg_notes; exception when duplicate_object then null; end $$;

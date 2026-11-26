@@ -109,7 +109,7 @@
   const v = document.createElement("div");
   v.id = "village";
   let html = '<div class="vsky" aria-hidden="true">' + [0, 1, 2, 3].map((i) => '<i class="c' + i + '">' + cloud() + "</i>").join("") + '</div><div class="vhill" aria-hidden="true"></div>';
-  html += '<div class="vrow"><div class="vsign" aria-hidden="true"><b>홍보영상팀 마을</b><span>DREAM GUILD</span></div>' +
+  html += '<div class="vrow"><div class="vcol"><div class="vroul"></div><div class="vsign" aria-hidden="true"><b>홍보영상팀 마을</b><span>DREAM GUILD</span></div></div>' +
     '<div class="vhouse" data-shop="1" role="button" tabindex="0" aria-label="마을 옷가게 들어가기" title="마을 옷가게"><span class="vlabel">마을 옷가게</span>' + svg(40, 40, SHOP(), "vart") + "</div>" + tree(0);
   MEMBERS.forEach((m, i) => {
     const draw = HOUSES[m.id];
@@ -121,4 +121,5 @@
   v.innerHTML = html;
   document.body.insertBefore(v, document.body.firstChild);
   if (typeof paintBoards === "function") paintBoards();
+  if (typeof buildRoulette === "function") buildRoulette();
 })();

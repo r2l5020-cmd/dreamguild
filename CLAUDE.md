@@ -11,7 +11,7 @@
   - `style.css`, `index.html`, `manifest.json`, `assets/`, `fonts/`(Galmuri11), `vendor/supabase.js`
 - `build-web.js` — `app/`을 `docs/`로 복사해요. GitHub Pages는 `docs/`를 배포해요.
 - `pack.js` — 데스크톱 앱 3종(Windows, Mac Apple Silicon, Mac Intel)을 `dist/`에 만들어요.
-- `setup.sql` — Supabase 표(dg_tasks, dg_members, dg_chat, dg_rooms, dg_skills), RLS, 실시간 정책. 이미 실행돼 있어요.
+- `setup.sql` — Supabase 표(dg_tasks, dg_members, dg_chat, dg_rooms, dg_skills, dg_notes), RLS, 실시간 정책. 1~7번은 실행돼 있고, 8번(dg_notes 쪽지)은 사용자가 Supabase SQL Editor에서 직접 실행해야 해요(안 돼 있으면 쪽지함에 안내가 떠요).
 - `설치안내.md` — 팀원용 설치 안내.
 
 ## 배포
@@ -32,7 +32,7 @@
 - 실시간 채널은 private 채널 `dreamguild-village`이고, realtime.messages 정책이 'dreamguild%' 주제만 허용해요.
 - 화면이 깜빡이지 않게 데이터 서명 비교, 말풍선 key 비교를 쓰고 있어요. 주기적으로 전체를 다시 그리지 않아요.
 - 조작 설명 말풍선은 넣지 않아요(사용자가 방해된다고 함). 조작: 내 캐릭터 클릭 → 내 스테이터스 카드(레벨·골드·HP/MP·스킬·옷장·로드맵), 다른 사람 클릭 → 이름·직업·HP·MP만 보이는 작은 카드. (웹) 뒤 건물 클릭 → 그 사람의 방, 옷가게 건물 → 옷가게. (웹) 할 일은 각자 집 위에 배경 없이 떠 있고(이번 주 남은 일 + 오늘 끝낸 일은 줄 그어 흐리게), 내 집 위에만 체크칸·추가칸이 있어요. 오늘 이전에 끝낸 일은 「✓ 완료한 할 일」 버튼 → 날짜별 카드. 땅 아래 고정 채팅창에 Enter → 머리 위 말풍선만, 칸이 비면 ← → 걷기, ↑(또는 채팅창 밖에서 스페이스, ⤴ 점프 버튼) → 점프(효과음·이펙트, 다른 사람 화면에도 보여요). 모닥불 옆 버튼: 🏠 내 방, 👕 옷가게, (데스크톱) – ✕ / (웹) 👤 사람. 채팅 기록은 채팅창의 💬 기록.
-- 마을 배경(`village.js`)은 웹 전용이에요. 옷(`wardrobe.js`)은 캐릭터 그림 위에 겹치는 곡선 벡터 SVG(좌표 = 그림 픽셀, 머리 y≈0~45·목 y≈90·어깨 y≈108·오른손 ≈(41,146))이고, 모자는 `HEAD_K`로 머리 너비에 맞춰요. 집 위 할 일 판은 `layoutBoards()`가 양옆 집 사이 거리로 폭을 정해 겹치지 않고, 긴 이름은 한 줄 「…」로 줄여요. 채팅창 왼쪽 「❓ 도움말」은 `helpHTML()`이에요. 기능을 바꾸면 도움말도 같이 고쳐요. 옷장 기록은 `dg_rooms.layout.closet`({owned, wear})에 저장해요. 골드 = 모은 XP − 산 옷 가격 합(레벨은 그대로). 옷에 `cls`가 있으면 그 사람 전용, `lv`가 있으면 그 레벨부터 살 수 있어요. 효과음은 파일 없이 WebAudio로 만들어요(`sfx()`).
+- 마을 배경(`village.js`)은 웹 전용이에요. 옷(`wardrobe.js`)은 캐릭터 그림 위에 겹치는 곡선 벡터 SVG(좌표 = 그림 픽셀, 머리 y≈0~45·목 y≈90·어깨 y≈108·오른손 ≈(41,146))이고, 모자는 `HEAD_K`로 머리 너비에 맞춰요. 집 위 할 일 판은 `layoutBoards()`가 양옆 집 사이 거리로 폭을 정해 겹치지 않고, 긴 이름은 한 줄 「…」로 줄여요. 채팅창 왼쪽 「❓ 도움말」은 `helpHTML()`이에요. (웹) 하늘 가운데 `#sky`: 시계·서울 날씨(Open-Meteo, 키 없음, CSP connect-src에 허용)·비 소식·퇴근(18시)까지 남은 시간. (웹) 표지판 위 점심 룰렛 `MENUS`: 결과는 dg_chat에 kind 'lunch'로 저장돼 동료 화면에서도 같이 돌고, 돌린 사람 옆에 3시간 「추천메뉴」가 떠요. 쪽지 `dg_notes`(글 500자 + 손그림 PNG): 동료 집 클릭(웹) 또는 동료 카드의 ✉ → 쓰기, 안 읽은 쪽지는 내 집 위 할 일 맨 위에 떠요. 바닥 가구 div는 class가 `it floor`라서 `.room .floor`에 `:not(.it)`을 꼭 붙여요. 기능을 바꾸면 도움말도 같이 고쳐요. 옷장 기록은 `dg_rooms.layout.closet`({owned, wear})에 저장해요. 골드 = 모은 XP − 산 옷 가격 합(레벨은 그대로). 옷에 `cls`가 있으면 그 사람 전용, `lv`가 있으면 그 레벨부터 살 수 있어요. 효과음은 파일 없이 WebAudio로 만들어요(`sfx()`).
 
 ## 게임 수치
 - 경험치: S 10, M 30, L 60. 다음 레벨까지 100+20(lv-1). 최대 Lv20.

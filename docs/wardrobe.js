@@ -206,7 +206,7 @@ function outfitSvg(memberId, wear, layer) {
     return s.id === "hat" && k !== 1 ? '<g transform="scale(' + k + ',1)">' + o.art() + "</g>" : o.art();
   }).join("");
   if (!art) return "";
-  return '<svg viewBox="' + (-w / 2) + ' 0 ' + w + ' 200" preserveAspectRatio="none" aria-hidden="true">' + art + "</svg>";
+  return '<svg viewBox="' + (-w / 2) + ' 0 ' + w + ' 200" preserveAspectRatio="xMidYMax meet" aria-hidden="true">' + art + "</svg>";
 }
 function avatarHTML(memberId, wear, cls, extra) {
   return '<span class="av ' + (cls || "") + '"' + (extra || "") + '><span class="ol back">' + outfitSvg(memberId, wear, "back") + '</span><img class="spr" alt="" src="assets/' + memberId + '.png"><span class="ol front">' + outfitSvg(memberId, wear, "front") + "</span></span>";

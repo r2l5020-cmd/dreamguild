@@ -32,7 +32,7 @@ html.web .chatbar{left:0!important;width:100%!important;padding:5px max(8px,calc
 /* 스테이터스 카드 · 옷가게 */
 .prof{display:flex;gap:14px;align-items:flex-end;margin-bottom:6px}
 .av.big .spr{height:132px;width:auto}
-.av.big{flex:none;padding:0 10px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.2))}
+.av.big{flex:none;margin:0 10px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.2))}
 .pinfo{flex:1;min-width:0}
 .ptitle{font-family:var(--pixel);font-weight:400;font-size:15px;color:var(--wood-d)}
 .gold{margin:6px 0 0;font-weight:700;color:#9A6A12}
@@ -102,7 +102,7 @@ html.web .chatbar{left:0!important;width:100%!important;padding:5px max(8px,calc
 @keyframes flick{0%,100%{transform:scale(1,1)}50%{transform:scale(.94,1.06)}}
 
 /* 카드 */
-.card{position:fixed;width:400px;max-height:calc(100vh - 200px);overflow-y:auto;overflow-x:hidden;background:var(--paper);border:3px solid var(--wood);border-radius:18px;padding:16px 18px;box-shadow:0 10px 30px rgba(40,25,12,.35);animation:rise .18s ease-out;user-select:text;-webkit-user-select:text}
+.card{position:fixed;z-index:6;width:400px;max-height:calc(100vh - 200px);overflow-y:auto;overflow-x:hidden;background:var(--paper);border:3px solid var(--wood);border-radius:18px;padding:16px 18px;box-shadow:0 10px 30px rgba(40,25,12,.35);animation:rise .18s ease-out;user-select:text;-webkit-user-select:text}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .card .x{position:absolute;top:10px;right:10px;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--paper2)}
 .phead{display:flex;gap:12px;align-items:flex-end;padding-right:36px}
@@ -183,8 +183,8 @@ body.mini .ground{display:none}
 .card.wide{width:512px}
 .roomtitle{margin:0 40px 8px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .room{position:relative;width:440px;height:240px;border:3px solid var(--wood);border-radius:12px;overflow:hidden;margin:0 auto;background:#F6E7C8}
-.room .wall{position:absolute;left:0;right:0;top:0;height:140px}
-.room .floor{position:absolute;left:0;right:0;bottom:0;height:100px;border-top:4px solid #8A5A33}
+.room .wall:not(.it){position:absolute;left:0;right:0;top:0;height:140px}
+.room .floor:not(.it){position:absolute;left:0;right:0;bottom:0;height:100px;border-top:4px solid #8A5A33}
 .room .window{position:absolute;left:30px;top:22px;width:62px;height:56px;border:3px solid #8A5A33;background:#BFE3FF;border-radius:4px}
 .room .window i{position:absolute;left:50%;top:0;bottom:0;border-left:3px solid #8A5A33}
 .room .window::after{content:"";position:absolute;left:0;right:0;top:50%;border-top:3px solid #8A5A33}
@@ -347,6 +347,68 @@ html.web .ground{left:0!important;width:100%!important;border-radius:0}
 .help kbd{display:inline-block;min-width:20px;padding:0 5px;font-family:var(--body);font-size:11px;line-height:18px;text-align:center;background:#fff;border:1.5px solid var(--line);border-bottom-width:3px;border-radius:5px;color:var(--ink)}
 .chatbar .jumpb{border:2px solid #5A3A20;background:#BFE3A3;color:var(--ink);font-size:12px}
 @media (prefers-reduced-motion:reduce){.pal.hop .av,.jumpfx i,.jumpfx b,.checkfx i{animation-duration:.01s}}
+
+/* 하늘 위 시계 · 날씨 · 퇴근 */
+#sky{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 22px 12px;min-width:240px;text-align:center;color:#24425E;background:rgba(255,255,255,.28);border:2px solid rgba(255,255,255,.55);border-radius:18px;box-shadow:0 4px 18px rgba(40,70,110,.12);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);pointer-events:none;text-shadow:0 1px 0 rgba(255,255,255,.7)}
+html:not(.web) #sky{display:none}
+#sky .sk-time{font-family:var(--pixel);font-size:42px;line-height:1.05;letter-spacing:2px;color:#1F3A55}
+#sky .sk-date{font-size:12px;font-weight:700;opacity:.85}
+#sky .sk-wx{font-size:15px;font-weight:700;margin-top:4px}
+#sky .sk-dim{font-weight:400;font-size:12px;opacity:.75}
+#sky .sk-rain{font-size:12.5px}
+#sky .sk-off{font-size:13px;margin-top:4px}
+#sky .sk-off b{font-family:var(--pixel);font-weight:400;font-size:15px;color:#9A3B1E}
+#sky .sk-bar{display:block;width:200px;height:7px;margin-top:3px;border-radius:999px;background:rgba(255,255,255,.6);box-shadow:inset 0 0 0 1.5px rgba(36,66,94,.35);overflow:hidden}
+#sky .sk-bar i{display:block;height:100%;background:linear-gradient(90deg,#8DBB5E,#F5C451,#E07A2F);border-radius:999px}
+@media (max-width:700px){#sky{top:8px;padding:6px 14px;min-width:0}#sky .sk-time{font-size:30px}#sky .sk-rain,#sky .sk-bar{display:none}}
+
+/* 점심 룰렛 (표지판 위) */
+#village .vcol .vroul{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;width:clamp(120px,10.5vw,158px);pointer-events:auto;display:flex;flex-direction:column;align-items:center}
+#village .roul-title{font-family:var(--pixel);font-size:12px;color:#2E2318;text-shadow:0 0 2px #fff,0 0 3px #fff;margin-bottom:1px;white-space:nowrap}
+#village .wheel-svg{width:100%;height:auto;display:block;filter:drop-shadow(0 3px 0 rgba(59,42,30,.25));overflow:visible}
+#village .wheel-svg text{font-family:var(--pixel);font-size:7.6px;fill:#3B2A1E}
+#village .wheel{transform-origin:0 0}
+#village .roul-hub{position:absolute;left:50%;top:calc(50% + 7px);transform:translate(-50%,-50%);width:38%;aspect-ratio:1;border-radius:50%;border:2.5px solid var(--wood-d);background:radial-gradient(circle at 35% 30%,#FFE9A8,#E3A63C);font-family:var(--pixel);font-size:clamp(10px,.8vw,12px);color:var(--ink);cursor:pointer;box-shadow:0 2px 0 rgba(59,42,30,.35)}
+#village .roul-hub:hover{filter:brightness(1.08)}
+#village .roul-hub:active{transform:translate(-50%,-48%)}
+@media (max-width:760px){#village .vroul{display:none}}
+.lunchtag{position:absolute;left:66px;top:34px;z-index:4;display:flex;flex-direction:column;align-items:flex-start;padding:3px 8px 4px;background:#FFF8EA;border:2px solid var(--wood-d);border-radius:10px 10px 10px 2px;box-shadow:0 2px 0 rgba(59,42,30,.25);pointer-events:none;white-space:nowrap}
+.lunchtag small{font-size:10px;color:var(--muted);line-height:1.2}
+.lunchtag b{font-family:var(--pixel);font-weight:400;font-size:13px;color:#9A3B1E;line-height:1.2}
+.lunchtag.pop{animation:pop .35s ease-out}
+
+/* 쪽지 */
+.av.mid .spr{height:84px;width:auto}
+.av.mid{flex:none;margin:0 6px}
+.compose textarea{width:100%;margin-top:10px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:#fff;font:inherit;font-size:14px;resize:vertical;user-select:text;-webkit-user-select:text}
+.compose textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 2px rgba(227,166,60,.4)}
+.compose .pad{margin-top:8px;border:2px dashed var(--line);border-radius:12px;overflow:hidden;background:#FFFDF6;line-height:0}
+.compose canvas{width:100%;height:auto;aspect-ratio:9/4;cursor:crosshair;touch-action:none}
+.compose .tools{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:8px}
+.compose .pen{width:22px;height:22px;border-radius:50%;border:2px solid #fff;background:var(--c);box-shadow:0 0 0 1.5px var(--line);padding:0}
+.compose .pen.on{box-shadow:0 0 0 2.5px var(--wood-d)}
+.compose .psize{width:28px;height:28px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;padding:0}
+.compose .psize i{display:block;border-radius:50%;background:var(--ink)}
+.compose .psize.on,.compose .ghost.on{border-color:var(--wood-d);background:#FDEBC2}
+.compose .tsep{width:1px;height:20px;background:var(--line);margin:0 2px}
+.letter{margin-top:10px;padding:12px 14px;background:repeating-linear-gradient(#FFFDF6 0 25px,#EFE3CC 25px 26px);border:1.5px solid var(--line);border-radius:12px}
+.letter .ltext{margin:0 0 6px;font-size:15px;line-height:26px;white-space:normal;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.letter .ldraw{display:block;width:100%;height:auto;border-radius:8px;border:1px solid var(--line);background:#FFFDF6}
+.inbox{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.inbox button{width:100%;display:flex;align-items:center;gap:8px;padding:6px 8px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);text-align:left}
+.inbox button:hover{border-color:var(--wood)}
+.inbox img{height:30px;width:auto;flex:none}
+.inbox span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+.inbox time{font-size:11px;color:var(--muted);flex:none}
+.inbox .unread button{background:#FDEBC2;border-color:var(--gold)}
+.inbox .unread span::before{content:"● ";color:#E05A4F}
+.nbadge{display:inline-block;min-width:18px;padding:0 5px;border-radius:999px;background:#E05A4F;color:#fff;font-size:11px;line-height:18px;text-align:center}
+#village .vnotes{display:flex;flex-direction:column;gap:3px;margin-bottom:4px}
+#village .vnote{display:block;width:100%;height:24px;padding:0 8px;border:2px solid var(--wood-d);border-radius:8px;background:linear-gradient(#FFF6D8,#FDE7A8);font-family:var(--pixel);font-size:11.5px;color:var(--ink);text-shadow:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;box-shadow:0 2px 0 rgba(59,42,30,.3);animation:wiggle 2.6s ease-in-out infinite}
+#village .vnote b{font-weight:400;color:#9A3B1E}
+#village .vnote.more{background:#FFF8EA;animation:none}
+@keyframes wiggle{0%,86%,100%{transform:rotate(0)}89%{transform:rotate(-3deg)}93%{transform:rotate(3deg)}96%{transform:rotate(-1.5deg)}}
+@media (prefers-reduced-motion:reduce){#village .vnote{animation:none}}
 
 /* 다른 사람 카드 (간단히) */
 .card.mini-card{width:330px}
