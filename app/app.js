@@ -718,7 +718,7 @@ function skyHTML() {
 function paintSky(force) {
   if (!WEB) return;
   let el = document.getElementById("sky");
-  if (!el) { el = document.createElement("div"); el.id = "sky"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "off"); document.body.appendChild(el); }
+  if (!el) { el = document.createElement("div"); el.id = "sky"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "off"); document.body.appendChild(el); if (PROGRAM) { el.title = "끌어서 옮기기 · 두 번 누르면 원래 자리"; requestAnimationFrame(placePanels); } }
   const html = skyHTML(); if (force || el._h !== html) { el._h = html; el.innerHTML = html; }
 }
 if (WEB) { setInterval(() => paintSky(), 10000); setInterval(loadWeather, 30 * 60000); }
@@ -796,6 +796,7 @@ function paintSkyChat() {
     el = document.createElement("div"); el.id = "skychat"; el.className = "hit";
     el.innerHTML = '<button type="button" class="sc-head" data-act="openLog" title="전체 채팅 기록 보기">💬 채팅 기록 <span>전체 보기 ›</span></button><ul class="sc-list" aria-live="polite"></ul>';
     document.body.appendChild(el);
+    if (PROGRAM) requestAnimationFrame(placePanels);
   }
   const rows = S.chat.slice(-30).map((x) => {
     const ev = eventText(x), t = "<time>" + hhmm(x.created_at) + "</time>";
@@ -816,10 +817,35 @@ function buildProgramChrome() {
   const ds = window.deskShell;
   const tb = document.createElement("div"); tb.id = "titlebar";
   tb.innerHTML = '<img src="assets/appicon.png" alt=""><span class="tt">DREAM GUILD</span><span class="sp"></span>' +
+    '<label class="tbop" title="전체 투명도"><span aria-hidden="true">◐</span><input type="range" min="25" max="100" step="5" aria-label="전체 투명도"></label>' +
+    (ds.zoom ? '<span class="tbzoom"><button type="button" data-zoom="-1" aria-label="작게" title="작게 (Ctrl −)">−</button><button type="button" data-zoom="0" class="zv" title="원래 크기 (Ctrl 0)">100%</button><button type="button" data-zoom="1" aria-label="크게" title="크게 (Ctrl +)">+</button></span>' : "") +
     '<button type="button" data-win="min" aria-label="최소화" title="최소화">─</button><button type="button" data-win="max" aria-label="크게" title="화면 가득 / 원래 크기">☐</button><button type="button" data-win="close" class="cl" aria-label="닫기" title="닫기">✕</button>';
   tb.addEventListener("click", (e) => { const b = e.target.closest("[data-win]"); if (!b) return; ({ min: ds.min, max: ds.max, close: ds.close })[b.dataset.win](); });
   tb.addEventListener("dblclick", (e) => { if (!e.target.closest("button")) ds.max(); });
   document.body.appendChild(tb);
+  // 전체 투명도 (25~100%) — 이 컴퓨터에 기억해요
+  const lsGet = (k, d) => { try { const v = parseFloat(localStorage.getItem(k)); return isFinite(v) ? v : d; } catch (e) { return d; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) {} };
+  const op = tb.querySelector(".tbop input");
+  const setOp = (v) => { v = Math.max(25, Math.min(100, Math.round(v))); op.value = v; document.body.style.opacity = v >= 100 ? "" : String(v / 100); lsSet("dg-opacity", v); };
+  setOp(lsGet("dg-opacity", 100));
+  op.addEventListener("input", () => setOp(+op.value));
+  // 전체 크기 (브라우저 확대/축소처럼, 50~150%)
+  if (ds.zoom) {
+    const zv = tb.querySelector(".zv");
+    let Z = 1;
+    const setZoom = (z) => { Z = Math.max(0.5, Math.min(1.5, Math.round(z * 10) / 10)); ds.zoom(Z); zv.textContent = Math.round(Z * 100) + "%"; lsSet("dg-zoom", Z); setTimeout(() => { try { layoutBoards(); placePanels(); } catch (e) {} }, 60); };
+    window.dgZoom = () => Z;
+    setZoom(lsGet("dg-zoom", 1));
+    tb.addEventListener("click", (e) => { const b = e.target.closest("[data-zoom]"); if (!b) return; const d = +b.dataset.zoom; setZoom(d ? Z + d * 0.1 : 1); });
+    document.addEventListener("keydown", (e) => {
+      if (!e.ctrlKey || e.altKey) return;
+      if (e.key === "=" || e.key === "+") { e.preventDefault(); setZoom(Z + 0.1); }
+      else if (e.key === "-" || e.key === "_") { e.preventDefault(); setZoom(Z - 0.1); }
+      else if (e.key === "0") { e.preventDefault(); setZoom(1); }
+    });
+    window.addEventListener("wheel", (e) => { if (!e.ctrlKey) return; e.preventDefault(); setZoom(Z + (e.deltaY < 0 ? 0.1 : -0.1)); }, { passive: false });
+  }
   ds.onMaxState((on) => { const b = tb.querySelector('[data-win="max"]'); b.textContent = on ? "❐" : "☐"; document.documentElement.classList.toggle("maxed", on); });
   // 오른쪽 아래 손잡이로 창 크기 조절 (투명한 창은 윈도우 기본 크기 조절이 불안정해서 직접 만들어요)
   const grip = document.createElement("div"); grip.id = "grip"; grip.title = "끌어서 창 크기 조절"; document.body.appendChild(grip);
@@ -829,18 +855,71 @@ function buildProgramChrome() {
   const end = () => { if (rs) { rs = null; ds.resizeEnd(); } }; grip.addEventListener("pointerup", end); grip.addEventListener("pointercancel", end);
   // 닫기 전에 마을에 "나갔어요"를 남겨요
   ds.onBeforeClose(async () => { try { await logLeave(true); } catch (e) {} ds.closeNow(); });
-  // 화면 가득일 때: 아무것도 없는 투명한 하늘 위에서는 클릭이 뒤로 통과해요 (바탕화면 아이콘·다른 프로그램을 누를 수 있어요)
+  // 아무것도 없는 투명한 하늘 위에서는 클릭이 뒤로 통과해요 (바탕화면 아이콘·뒤에 있는 창을 누를 수 있고, 누른 창은 앞으로 와요)
   if (ds.setIgnore) {
     let ig = false;
     const EMPTY = (t) => !t || t === document.documentElement || t === document.body || t.id === "village" || t.id === "row" || t.id === "cards" || t.id === "toasts" ||
       (t.classList && (t.classList.contains("vrow") || t.classList.contains("vcol") || t.classList.contains("row") || t.classList.contains("vboard") || t.classList.contains("vlist") || t.classList.contains("toasts")));
     const set = (on) => { if (on !== ig) { ig = on; ds.setIgnore(on); } };
     document.addEventListener("mousemove", (e) => {
-      if (!document.documentElement.classList.contains("maxed") || dragging || rs) { set(false); return; }
+      if (dragging || rs || panelDrag) { set(false); return; }
       set(EMPTY(document.elementFromPoint(e.clientX, e.clientY)));
     }, { passive: true });
-    ds.onMaxState((on) => { if (!on) set(false); });
   }
+}
+
+/* (프로그램) 시계 칸 · 채팅 기록 칸을 끌어서 옮겨요. 가까운 모서리 기준으로 기억해서 창 크기가 바뀌어도 그 자리 근처에 있어요. 두 번 누르면 원래 자리. */
+let panelDrag = null;
+const PANEL_KEY = (id) => "dg-pos-" + id;
+function panelPos(id) { try { return JSON.parse(localStorage.getItem(PANEL_KEY(id))); } catch (e) { return null; } }
+function placePanels() {
+  if (!PROGRAM) return;
+  ["sky", "skychat"].forEach((id) => {
+    const el = document.getElementById(id); if (!el) return;
+    const p = panelPos(id);
+    if (!p) { el.style.left = el.style.right = el.style.top = el.style.bottom = ""; el.classList.remove("moved"); return; }
+    const W = window.innerWidth, H = window.innerHeight, w = el.offsetWidth, h = el.offsetHeight;
+    const cl = (v, max) => Math.max(0, Math.min(v, Math.max(0, max)));
+    const top = 36; // 제목 줄 아래로
+    let x = p.ax === "r" ? W - p.x - w : p.x, y = p.ay === "b" ? H - p.y - h : p.y;
+    x = cl(x, W - w); y = Math.max(top, cl(y, H - h));
+    el.style.right = el.style.bottom = "auto"; el.style.left = x + "px"; el.style.top = y + "px"; el.classList.add("moved");
+  });
+}
+if (PROGRAM) {
+  window.addEventListener("resize", () => placePanels());
+  document.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const el = e.target.closest && e.target.closest("#sky, #skychat"); if (!el) return;
+    const list = e.target.closest(".sc-list"); if (list && e.offsetX >= list.clientWidth) return; // 스크롤 막대는 그대로
+    const r = el.getBoundingClientRect();
+    panelDrag = { el, sx: e.clientX, sy: e.clientY, x: r.left, y: r.top, moved: false, id: e.pointerId };
+  });
+  document.addEventListener("pointermove", (e) => {
+    const d = panelDrag; if (!d) return;
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+    if (!d.moved) { d.moved = true; d.el.classList.add("dragging"); try { d.el.setPointerCapture(d.id); } catch (x) {} }
+    const W = window.innerWidth, H = window.innerHeight, w = d.el.offsetWidth, h = d.el.offsetHeight;
+    const x = Math.max(0, Math.min(d.x + dx, W - w)), y = Math.max(36, Math.min(d.y + dy, H - h));
+    d.el.style.right = d.el.style.bottom = "auto"; d.el.style.left = x + "px"; d.el.style.top = y + "px"; d.el.classList.add("moved");
+  });
+  const endPanel = () => {
+    const d = panelDrag; panelDrag = null; if (!d || !d.moved) return;
+    d.el.classList.remove("dragging");
+    const r = d.el.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
+    const right = r.left + r.width / 2 > W / 2, bottom = r.top + r.height / 2 > H / 2;
+    const p = { ax: right ? "r" : "l", ay: bottom ? "b" : "t", x: Math.round(right ? W - r.right : r.left), y: Math.round(bottom ? H - r.bottom : r.top) };
+    try { localStorage.setItem(PANEL_KEY(d.el.id), JSON.stringify(p)); } catch (x) {}
+    // 끈 뒤에 따라오는 클릭(채팅 기록 열기 등)은 막아요
+    const stop = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+    document.addEventListener("click", stop, { capture: true, once: true }); setTimeout(() => document.removeEventListener("click", stop, { capture: true }), 50);
+  };
+  document.addEventListener("pointerup", endPanel); document.addEventListener("pointercancel", endPanel);
+  document.addEventListener("dblclick", (e) => {
+    const el = e.target.closest && e.target.closest("#sky, #skychat"); if (!el || e.target.closest(".sc-list")) return;
+    try { localStorage.removeItem(PANEL_KEY(el.id)); } catch (x) {} placePanels();
+  });
 }
 buildProgramChrome();
 
@@ -1026,6 +1105,11 @@ function helpHTML() {
       "맨 위 <b>⭐ 직업 전용 옷</b>은 나만 살 수 있어요. 🔒 표시가 붙은 옷은 그 레벨이 되면 열려요.",
       "산 옷은 내 카드의 <b>옷장</b>이나 옷가게에서 눌러 입고 벗어요. 동료들 화면에도 입은 모습이 보여요.",
     ]) +
+    (PROGRAM ? sec("🖥", "윈도우 프로그램", [
+      "<b>시계 칸과 채팅 기록 칸</b>은 마우스로 끌어서 원하는 곳에 둘 수 있어요. 두 번 누르면 원래 자리로 돌아가요.",
+      "제목 줄의 <b>◐ 막대</b>로 전체 투명도를, <b>− 100% +</b>로 전체 크기를 바꿔요. " + k("Ctrl") + "+마우스 휠, " + k("Ctrl") + " " + k("+") + " / " + k("−") + " / " + k("0") + "도 돼요.",
+      "건물·글자·버튼이 없는 투명한 하늘은 클릭이 뒤로 지나가요. 뒤에 있는 창을 누르면 그 창이 앞으로 와요.",
+    ]) : "") +
     '<p class="muted" style="margin-top:12px;text-align:center">언제든 채팅창 왼쪽 「❓ 도움말」을 누르면 이 안내를 다시 볼 수 있어요.</p></div>';
 }
 

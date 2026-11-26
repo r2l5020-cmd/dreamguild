@@ -473,7 +473,16 @@ html.program #village .vboard[style*="auto"]{width:auto}
 html.program #village .vpeek{align-self:center;height:22px;padding:0 9px;white-space:nowrap;font-family:var(--pixel);font-size:11px;border:1.5px solid var(--wood-d);border-radius:999px;background:rgba(255,248,234,.92);color:var(--wood-d);text-shadow:none;box-shadow:0 2px 0 rgba(59,42,30,.25);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 html.program #village .vpeek:hover{background:var(--gold);color:var(--ink)}
 html.program #village .vpeek.on{margin-top:3px;height:20px;font-size:10px;background:rgba(255,255,255,.8)}
-@media (max-height:760px){html.program #sky{display:none}html.program #skychat{bottom:250px}}
+@media (max-height:760px){html.program #sky{display:none}html.program #sky.moved{display:flex}html.program #skychat{bottom:250px}}
+/* 프로그램: 시계·채팅 칸 끌어 옮기기, 제목 줄의 투명도·크기 조절 */
+html.program #sky,html.program #skychat{cursor:grab;user-select:none;-webkit-user-select:none}
+html.program #sky.dragging,html.program #skychat.dragging{cursor:grabbing;box-shadow:0 8px 22px rgba(30,40,60,.3);transition:none}
+html.program #skychat .sc-list{cursor:auto}
+#titlebar .tbop{-webkit-app-region:no-drag;display:flex;align-items:center;gap:5px;height:34px;padding:0 8px;font-size:13px;opacity:.9}
+#titlebar .tbop input{width:84px;accent-color:#FFD36B;cursor:pointer}
+#titlebar .tbzoom{-webkit-app-region:no-drag;display:flex;align-items:center;margin-right:6px;border-left:1px solid rgba(255,255,255,.25);border-right:1px solid rgba(255,255,255,.25)}
+#titlebar .tbzoom button{width:30px;font-size:15px}
+#titlebar .tbzoom .zv{width:48px;font-family:var(--pixel);font-size:11px}
 
 /* 다른 사람 카드 (간단히) */
 .card.mini-card{width:330px}
