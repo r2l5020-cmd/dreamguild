@@ -453,7 +453,9 @@ html.program.maxed .chatbar{border-radius:0}
 /* 윈도우 프로그램 배치 — 화면 작업을 덜 가리게
    · 구름 없음 · 건물은 왼쪽에 모으고 오른쪽 땅은 평평하게 · 땅과 건물은 낮고 작게
    · 시계·채팅 칸은 오른쪽 아래(캐릭터 위)에 세로로 · 하늘 뒤 언덕 그림은 감춰요 */
-html.program{--vbase:calc(min(78px,11vh) + 44px)}
+html.program{--vbase:88px} /* 땅(초록) 높이 = 채팅창 높이 44px */
+html.program .pal{width:70px}
+html.program .pal .spr{height:80px}
 html.program body::before,html.program body::after{display:none}
 html.program #village .vsky{display:none}
 html.program #village{--px:clamp(1.2px,.15vw,2.4px);--base:var(--vbase)}
@@ -464,16 +466,16 @@ html.program #village .vsign b{font-size:clamp(11px,.9vw,15px)}
 html.program #village .vcol .vroul{width:clamp(96px,7.5vw,124px)}
 html.program #village .vlabel{font-size:clamp(9px,.7vw,11px);padding:0 5px}
 html.program #sky,html.program #skychat{top:auto;left:auto;right:14px;transform:none}
-html.program #skychat{bottom:262px;width:min(300px,30vw)}
+html.program #skychat{bottom:196px;width:min(300px,30vw)}
 html.program #skychat .sc-list{height:110px}
-html.program #sky{bottom:428px;width:min(300px,30vw);min-width:0;padding:6px 12px 8px;flex-direction:column}
+html.program #sky{bottom:362px;width:min(300px,30vw);min-width:0;padding:6px 12px 8px;flex-direction:column}
 html.program #sky .sk-time{font-size:28px}
 html.program #sky .sk-bar{width:100%}
 html.program #village .vboard[style*="auto"]{width:auto}
 html.program #village .vpeek{align-self:center;height:22px;padding:0 9px;white-space:nowrap;font-family:var(--pixel);font-size:11px;border:1.5px solid var(--wood-d);border-radius:999px;background:rgba(255,248,234,.92);color:var(--wood-d);text-shadow:none;box-shadow:0 2px 0 rgba(59,42,30,.25);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 html.program #village .vpeek:hover{background:var(--gold);color:var(--ink)}
 html.program #village .vpeek.on{margin-top:3px;height:20px;font-size:10px;background:rgba(255,255,255,.8)}
-@media (max-height:760px){html.program #sky{display:none}html.program #sky.moved{display:flex}html.program #skychat{bottom:250px}}
+@media (max-height:760px){html.program #sky{display:none}html.program #sky.moved{display:flex}html.program #skychat{bottom:190px}}
 /* 프로그램: 시계·채팅 칸 끌어 옮기기, 제목 줄의 투명도·크기 조절 */
 html.program #sky,html.program #skychat{cursor:grab;user-select:none;-webkit-user-select:none}
 html.program #sky.dragging,html.program #skychat.dragging{cursor:grabbing;box-shadow:0 8px 22px rgba(30,40,60,.3);transition:none}

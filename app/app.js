@@ -836,7 +836,7 @@ function buildProgramChrome() {
     let Z = 1;
     const setZoom = (z) => { Z = Math.max(0.5, Math.min(1.5, Math.round(z * 10) / 10)); ds.zoom(Z); zv.textContent = Math.round(Z * 100) + "%"; lsSet("dg-zoom", Z); setTimeout(() => { try { layoutBoards(); placePanels(); } catch (e) {} }, 60); };
     window.dgZoom = () => Z;
-    setZoom(lsGet("dg-zoom", 1));
+    setZoom(lsGet("dg-zoom", 0.8)); // 처음엔 80%
     tb.addEventListener("click", (e) => { const b = e.target.closest("[data-zoom]"); if (!b) return; const d = +b.dataset.zoom; setZoom(d ? Z + d * 0.1 : 1); });
     document.addEventListener("keydown", (e) => {
       if (!e.ctrlKey || e.altKey) return;
