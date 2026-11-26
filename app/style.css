@@ -362,7 +362,20 @@ html:not(.web) #sky{display:none}
 #sky .sk-bar i{display:block;height:100%;background:linear-gradient(90deg,#8DBB5E,#F5C451,#E07A2F);border-radius:999px}
 @media (max-width:700px){#sky{top:8px;padding:6px 14px;min-width:0}#sky .sk-time{font-size:30px}#sky .sk-rain,#sky .sk-bar{display:none}}
 
-/* 점심 룰렛 (표지판 위) */
+/* 하늘 시계 오른쪽: 늘 떠 있는 채팅 기록 */
+#skychat{position:fixed;top:18px;left:calc(50% + 150px);z-index:1;width:min(300px,calc(50vw - 170px));display:flex;flex-direction:column;background:rgba(255,255,255,.34);border:2px solid rgba(255,255,255,.6);border-radius:16px;box-shadow:0 4px 18px rgba(40,70,110,.12);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);overflow:hidden}
+html:not(.web) #skychat{display:none}
+#skychat .sc-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:6px 12px;border:0;border-bottom:1.5px solid rgba(255,255,255,.6);background:rgba(255,255,255,.35);font-family:var(--pixel);font-size:12px;color:#1F3A55;cursor:pointer}
+#skychat .sc-head span{font-family:var(--body);font-size:11px;opacity:.75}
+#skychat .sc-head:hover{background:rgba(255,255,255,.6)}
+#skychat .sc-list{list-style:none;margin:0;padding:6px 10px 8px;height:132px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;font-size:12.5px;line-height:1.4;color:#23384D;user-select:text;-webkit-user-select:text;scrollbar-width:thin}
+#skychat li{overflow-wrap:anywhere}
+#skychat li b{color:#7A3F12}
+#skychat li.mine b{color:#3F6A1E}
+#skychat li.ev{font-size:11.5px;color:#41566B;opacity:.9}
+#skychat li.join,#skychat li.leave{font-size:11px;opacity:.75}
+#skychat time{font-size:10px;opacity:.6;margin-left:2px;white-space:nowrap}
+@media (max-width:1000px){#skychat{display:none}}
 #village .vcol .vroul{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;width:clamp(120px,10.5vw,158px);pointer-events:auto;display:flex;flex-direction:column;align-items:center}
 #village .roul-title{font-family:var(--pixel);font-size:12px;color:#2E2318;text-shadow:0 0 2px #fff,0 0 3px #fff;margin-bottom:1px;white-space:nowrap}
 #village .wheel-svg{width:100%;height:auto;display:block;filter:drop-shadow(0 3px 0 rgba(59,42,30,.25));overflow:visible}

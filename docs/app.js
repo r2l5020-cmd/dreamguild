@@ -25,7 +25,7 @@ function makeLocal() {
     async loadSkills() { return (read().skills || []).slice(); },
     async castSkill(c) { const d = read(); const m = Object.assign({ id: uid(), created_at: new Date().toISOString() }, c); d.skills = (d.skills || []).concat([m]).slice(-500); write(d); return m; },
     async saveRoom(m, layout) { const d = read(); d.rooms = Object.assign({}, d.rooms || {}, { [m]: layout }); write(d); },
-    async sendChat(c) { const d = read(); const m = Object.assign({ id: uid(), created_at: new Date().toISOString() }, c); d.chat.push(m); d.chat = d.chat.slice(-200); write(d); if (h) h.chat(m); },
+    async sendChat(c) { const d = read(); const m = Object.assign({ id: uid(), created_at: new Date().toISOString() }, c); d.chat.push(m); d.chat = d.chat.slice(-200); write(d); if (h) h.chat(m); return m; },
     async chatSince() { return []; },
     async chatBefore() { return []; },
     async loadNotes() { return (read().notes || []).slice(-100).reverse(); },
@@ -79,7 +79,7 @@ function makeRemote() {
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "dg_skills" }, () => h.data())
         .on("postgres_changes", { event: "*", schema: "public", table: "dg_notes" }, () => h.data())
         .subscribe(async (status, err) => {
-          if (status === "SUBSCRIBED") { await ch.track({ desk: true, f: myF() }); if (this._warned) toast("실시간 연결이 다시 이어졌어요."); this._warned = false; }
+          if (status === "SUBSCRIBED") { await ch.track({ desk: true, f: myF() }); if (this._warned) toast("실시간 연결이 다시 이어졌어요."); this._warned = false; logJoin(); }
           else if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && !this._warned) { this._warned = true; console.warn("realtime", status, err); toast("실시간 연결이 잠시 끊겼어요. 채팅과 할 일은 몇 초마다 다시 확인할게요."); }
         });
     },
@@ -343,7 +343,9 @@ function addChat(m) {
     }
   }
   else if (m.kind === "system") { if (m.member !== S.me) toast(m.text); }
-  else if (byId(m.member)) { S.bubbles[m.member] = { text: m.text, until: Date.now() + 8000 }; paintBubble(m.member); }
+  else if (m.kind === "join" || m.kind === "leave") { /* 접속 기록은 채팅 기록에만 남아요 */ }
+  else if (byId(m.member)) { S.bubbles[m.member] = { text: m.text, until: Date.now() + BUBBLE_MS }; paintBubble(m.member); }
+  paintSkyChat();
   if (S.card && (S.card.type === "plaza" || S.card === "log")) renderCard();
 }
 async function announce(text) { try { const row = await store.sendChat({ member: S.me, text, kind: "system" }); if (row) addChat(row); } catch (e) {} }
@@ -700,6 +702,56 @@ function paintSky(force) {
 }
 if (WEB) { setInterval(() => paintSky(), 10000); setInterval(loadWeather, 30 * 60000); }
 
+/* ---------- 말풍선 · 접속 기록 · 하늘 옆 채팅 기록 ---------- */
+const BUBBLE_MS = 20000; // 말풍선이 떠 있는 시간
+const durText = (ms) => { const m = Math.max(1, Math.round(ms / 60000)); return m >= 60 ? Math.floor(m / 60) + "시간 " + (m % 60 ? (m % 60) + "분" : "") : m + "분"; };
+/* 채팅이 아닌 기록(알림·룰렛·입장·퇴장)을 한 줄 글로 */
+function eventText(x) {
+  const m = byId(x.member), nm = m ? m.name : "";
+  if (x.kind === "lunch" && m) return "🍽 " + nm + " 님의 룰렛 추천메뉴: " + x.text;
+  if (x.kind === "join" && m) return "🌅 " + nm + " 님이 들어왔어요";
+  if (x.kind === "leave" && m) return "🌙 " + nm + " 님이 나갔어요" + (x.text && x.text !== "퇴장" ? " · " + x.text : "");
+  if (x.kind === "system" || !m) return x.text;
+  return null; // 일반 채팅
+}
+let joinedAt = null, leaveSent = false;
+async function logJoin() {
+  if (!S.me || joinedAt) return;
+  joinedAt = Date.now(); leaveSent = false;
+  try { const row = await store.sendChat({ member: S.me, text: "입장", kind: "join" }); if (row) addChat(row); } catch (e) {}
+}
+/* 창을 닫을 때: 페이지가 사라져도 끝까지 보내지도록 keepalive로 직접 보내요 */
+async function logLeave(wait) {
+  if (!S.me || !joinedAt || leaveSent) return;
+  leaveSent = true;
+  const row = { member: S.me, text: durText(Date.now() - joinedAt) + " 머물렀어요", kind: "leave" };
+  joinedAt = null;
+  if (!store || store.mode !== "remote") { try { await store.sendChat(row); } catch (e) {} return; }
+  const p = fetch(CONFIG.SUPABASE_URL + "/rest/v1/dg_chat", { method: "POST", keepalive: true, headers: { apikey: CONFIG.SUPABASE_ANON_KEY, Authorization: "Bearer " + CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(row) }).catch(() => {});
+  if (wait) await Promise.race([p, new Promise((r) => setTimeout(r, 1500))]);
+}
+window.addEventListener("pagehide", () => { logLeave(false); });
+function paintSkyChat() {
+  if (!WEB) return;
+  let el = document.getElementById("skychat");
+  if (!el) {
+    el = document.createElement("div"); el.id = "skychat"; el.className = "hit";
+    el.innerHTML = '<button type="button" class="sc-head" data-act="openLog" title="전체 채팅 기록 보기">💬 채팅 기록 <span>전체 보기 ›</span></button><ul class="sc-list" aria-live="polite"></ul>';
+    document.body.appendChild(el);
+  }
+  const rows = S.chat.slice(-30).map((x) => {
+    const ev = eventText(x), t = "<time>" + hhmm(x.created_at) + "</time>";
+    if (ev !== null) return '<li class="ev ' + esc(x.kind) + '">' + esc(ev) + " " + t + "</li>";
+    const m = byId(x.member);
+    return '<li class="' + (x.member === S.me ? "mine" : "") + '"><b>' + esc(m.name) + "</b> " + esc(x.text) + " " + t + "</li>";
+  }).join("") || '<li class="ev">아직 이야기가 없어요. 아래 채팅창에 인사해 볼까요?</li>';
+  const list = el.querySelector(".sc-list");
+  if (list._h === rows) return;
+  const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
+  list._h = rows; list.innerHTML = rows;
+  if (atBottom || !list._init) { list.scrollTop = list.scrollHeight; list._init = true; }
+}
+
 /* ---------- 점심 룰렛 (웹: 마을 표지판 위) ---------- */
 const MENUS = ["닭갈비", "쌀국수", "김치찌개", "보리밥", "부대찌개", "돈까스", "마라탕", "분식", "샌드위치", "세무서급식", "햄버거", "중국집", "카레", "콩나물국밥", "순대국", "고양이부엌", "배민"];
 const LUNCH_HOURS = 3; // 추천메뉴가 캐릭터 옆에 떠 있는 시간
@@ -858,7 +910,8 @@ function helpHTML() {
       "<b>모닥불</b>을 누르면 이번 주 팀 소식과 팀 목표 XP가 보여요. 끌면 캐릭터 줄 위치를 옮길 수 있어요.",
     ]) +
     sec("💬", "채팅 · 걷기 · 점프", [
-      "맨 아래 채팅창에 쓰고 " + k("Enter") + "를 누르면 내 캐릭터 머리 위에 말풍선이 떠요. 지난 이야기는 「💬 기록」에서 봐요.",
+      "맨 아래 채팅창에 쓰고 " + k("Enter") + "를 누르면 내 캐릭터 머리 위에 말풍선이 " + (BUBBLE_MS / 1000) + "초 동안 떠요. " + (WEB ? "하늘 시계 오른쪽 <b>채팅 기록</b>에 늘 남아 있어서 놓쳐도 괜찮아요. " : "") + "전체 기록은 「💬 기록」에서 봐요.",
+      "누가 마을에 들어오고 나간 시간도 채팅 기록에 남아요.",
       "채팅창이 비어 있을 때 " + k("←") + " " + k("→") + "로 걷고, " + k("↑") + "로 점프해요. 채팅창 밖에서는 " + k("스페이스") + ", 또는 「⤴ 점프」 버튼도 돼요.",
       "내 점프와 걷기는 동료들 화면에도 그대로 보여요.",
     ]) +
@@ -905,8 +958,8 @@ function renderCard() {
     const rows = S.chat.map((x) => {
       const day = fmtDay(x.created_at), sep = day !== lastDay ? '<li class="day">' + day + "</li>" : ""; lastDay = day;
       const m = byId(x.member);
-      if (x.kind === "lunch" && m) return sep + '<li class="sys">🍽 ' + esc(m.name) + " 님의 룰렛 추천메뉴: " + esc(x.text) + " <time>" + hhmm(x.created_at) + "</time></li>";
-      if (x.kind === "system" || !m) return sep + '<li class="sys">' + esc(x.text) + " <time>" + hhmm(x.created_at) + "</time></li>";
+      const ev = eventText(x);
+      if (ev !== null) return sep + '<li class="sys">' + esc(ev) + " <time>" + hhmm(x.created_at) + "</time></li>";
       return sep + '<li class="' + (x.member === S.me ? "mine" : "") + '"><img src="' + IMG(m.id) + '" alt=""><div><b>' + esc(m.name) + "</b><time>" + hhmm(x.created_at) + "</time><p>" + esc(x.text) + "</p></div></li>";
     }).join("");
     html = '<div class="card wide hit" role="dialog" aria-label="채팅 기록"><button class="x" data-act="close" aria-label="닫기">✕</button><p class="big">마을 채팅 기록</p>' +
@@ -937,7 +990,7 @@ function renderCard() {
       "<h3>팀원</h3><ul class=\"feed\">" + MEMBERS.map((m) => { const w = weekTasks(m.id, thisWeek()), d = w.filter((t) => t.done).length, lv = levelInfo(xpOf(m.id)).lv;
         return '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> Lv." + lv + " " + esc(titleOf(m, lv, S.routes[m.id])) + ' <span class="muted">· ' + d + "/" + w.length + (asleep(m.id) ? " · 자리 비움" : "") + "</span></span></li>"; }).join("") + "</ul>" +
       '<h3>최근 이야기<button class="ghost" data-act="openLog" style="margin-left:auto">전체 기록 보기</button></h3>' +
-      (feed.length ? '<ul class="feed">' + feed.map((x) => { const m = byId(x.member); if (x.kind === "lunch" && m) return '<li class="sys">· 🍽 ' + esc(m.name) + " 님의 룰렛 추천메뉴: " + esc(x.text) + "</li>"; return x.kind === "system" || !m ? '<li class="sys">· ' + esc(x.text) + "</li>" : '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> " + esc(x.text) + ' <span class="muted">' + hhmm(x.created_at) + "</span></span></li>"; }).join("") + "</ul>" : '<p class="empty">아직 조용해요. 먼저 인사해 볼까요?</p>') + "</div>";
+      (feed.length ? '<ul class="feed">' + feed.map((x) => { const m = byId(x.member); if (x.kind === "lunch" || x.kind === "join" || x.kind === "leave") return '<li class="sys">· ' + esc(eventText(x)) + " " + hhmm(x.created_at) + "</li>"; return x.kind === "system" || !m ? '<li class="sys">· ' + esc(x.text) + "</li>" : '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> " + esc(x.text) + ' <span class="muted">' + hhmm(x.created_at) + "</span></span></li>"; }).join("") + "</ul>" : '<p class="empty">아직 조용해요. 먼저 인사해 볼까요?</p>') + "</div>";
   } else if (c && c.type === "room") {
     const m = byId(c.id), route = S.routes[m.id], info = levelInfo(xpOf(m.id)), mine = m.id === S.me, edit = S.edit && S.edit.id === m.id;
     html = '<div class="card wide hit" role="dialog" aria-label="' + esc(m.place) + '"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
@@ -1095,7 +1148,7 @@ document.addEventListener("click", async (e) => {
   else if (a === "miniFromQuit") { closeCard(); setMini(true); }
   else if (a === "askQuit") openCard("quit");
   else if (a === "openWho") { if (S.card === "who") closeCard(); else openCard("who"); }
-  else if (a === "quit") D.quit();
+  else if (a === "quit") { await logLeave(true); D.quit(); }
   else if (a === "prev") { S.week = addDays(S.week, -7); renderCard(); }
   else if (a === "next") { S.week = addDays(S.week, 7); renderCard(); }
   else if (a === "say") { closeCard(); openSay(); }
@@ -1170,6 +1223,7 @@ async function pollChat() {
 }
 function startLive() {
   if (live || !S.me) return; live = true;
+  if (store.mode === "local") logJoin(); // 팀 연결이 있으면 실시간 채널에 들어간 순간 기록해요
   if (store.mode === "remote") { setInterval(pollChat, 6000); setInterval(() => reload(), 20000); }
   store.live({
     presence: (list) => {
@@ -1191,6 +1245,7 @@ function startLive() {
   if (!S.me) renderCard();
   await reload();
   try { S.chat = await store.loadChat(); } catch (e) { S.chat = []; }
+  paintSkyChat();
   S.chat.filter((m) => m.kind === "lunch" && byId(m.member) && Date.now() - new Date(m.created_at).getTime() < LUNCH_HOURS * 3600e3).forEach((m) => { S.lunch[m.member] = { menu: m.text, at: m.created_at }; });
   MEMBERS.forEach((m) => paintLunch(m.id));
   S.ready = true;
