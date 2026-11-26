@@ -640,12 +640,18 @@ function paintBoards() {
 function layoutBoards() {
   if (!WEB) return;
   const boards = [...document.querySelectorAll("#village .vboard")]; if (!boards.length) return;
-  const W = window.innerWidth, MAXW = 180, GAP = 8;
+  const W = window.innerWidth, MAXW = PROGRAM ? 220 : 180, GAP = 8;
   const cs = boards.map((b) => { const r = b.parentElement.getBoundingClientRect(); return r.left + r.width / 2; });
+  // 접힌 판(프로그램에서 동료 할 일)은 버튼 크기만큼만 차지해요 → 그 옆의 펼친 판이 더 넓어져요
+  const folded = boards.map((b) => !!b.querySelector(".vpeek:not(.on)") || !b.querySelector("li, .vadd, .vnote"));
+  boards.forEach((b, i) => { if (folded[i]) b.style.width = "auto"; });
+  const fw = boards.map((b, i) => folded[i] ? b.offsetWidth : 0);
   boards.forEach((b, i) => {
-    const dL = i > 0 ? cs[i] - cs[i - 1] : Infinity, dR = i < cs.length - 1 ? cs[i + 1] - cs[i] : Infinity;
-    const edge = 2 * Math.min(cs[i] - 4, W - cs[i] - 4);
-    b.style.width = Math.max(60, Math.floor(Math.min(MAXW, dL - GAP, dR - GAP, edge))) + "px";
+    if (folded[i]) return;
+    const half = (j, d) => j < 0 || j >= boards.length ? Infinity : folded[j] ? d - fw[j] / 2 - GAP : (d - GAP) / 2;
+    const hL = half(i - 1, i > 0 ? cs[i] - cs[i - 1] : 0), hR = half(i + 1, i < cs.length - 1 ? cs[i + 1] - cs[i] : 0);
+    const edge = Math.min(cs[i] - 4, W - cs[i] - 4);
+    b.style.width = Math.max(60, Math.floor(2 * Math.min(MAXW / 2, hL, hR, edge))) + "px";
   });
 }
 window.addEventListener("resize", () => layoutBoards());

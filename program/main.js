@@ -21,13 +21,14 @@ app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(
 function createWindow() {
   const wa = screen.getPrimaryDisplay().workArea, st = loadState();
   const w = Math.min(wa.width, 1440), h = Math.min(wa.height, 860);
-  const b = st && st.width >= MIN_W && st.height >= MIN_H ? st : { width: w, height: h, x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2) };
+  const fits = st && st.width >= MIN_W && st.height >= MIN_H && !(st.width >= wa.width && st.height >= wa.height); // 예전에 화면 가득 크기가 저장됐으면 무시
+  const b = fits ? st : { width: w, height: h, x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2) };
   win = new BrowserWindow({
     ...b, show: false, transparent: true, frame: false, resizable: false, maximizable: false, fullscreenable: false,
     hasShadow: false, backgroundColor: "#00000000", title: "DREAM GUILD", icon: nativeImage.createFromPath(ICON),
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
-  win.loadURL(PAGE);
+  loadPage();
   win.once("ready-to-show", () => win.show());
   win.on("moved", saveState);
   // 인터넷이 없을 때 안내 화면
@@ -44,6 +45,12 @@ function createWindow() {
   });
 }
 
+/* 켤 때마다 기억해 둔 예전 페이지(캐시)를 지우고 최신 마을을 받아 와요 */
+async function loadPage() {
+  try { await win.webContents.session.clearCache(); } catch (e) {}
+  win.loadURL(PAGE + "&t=" + Date.now(), { extraHeaders: "pragma: no-cache\ncache-control: no-cache\n" });
+}
+
 /* 화면 쪽(preload)에서 오는 요청 — 우리 페이지에서 온 것만 받아요 */
 const ok = (e) => { try { const u = e.senderFrame && e.senderFrame.url; return !u || u.startsWith(ORIGIN) || u.startsWith("file:"); } catch (x) { return false; } };
 ipcMain.on("win-min", (e) => { if (ok(e) && win) win.minimize(); });
@@ -51,8 +58,8 @@ ipcMain.on("win-close", (e) => { if (ok(e) && win) win.close(); });
 ipcMain.on("win-close-now", (e) => { if (ok(e) && win) { quitting = true; win.close(); } });
 ipcMain.on("win-max", (e) => {
   if (!ok(e) || !win) return;
-  if (maxed) { if (saved) win.setBounds(saved); maxed = false; }
-  else { saved = win.getBounds(); win.setBounds(screen.getDisplayMatching(saved).workArea); maxed = true; }
+  if (maxed) { if (saved) win.setBounds(saved); maxed = false; saveState(); }
+  else { saved = win.getBounds(); maxed = true; win.setBounds(screen.getDisplayMatching(saved).workArea); } // 화면 가득 크기는 저장하지 않아요
   win.webContents.send("max-state", maxed);
 });
 ipcMain.on("win-resize", (e, wpx, hpx) => {
@@ -62,7 +69,7 @@ ipcMain.on("win-resize", (e, wpx, hpx) => {
   win.setBounds({ x: b.x, y: b.y, width: w, height: h }); maxed = false;
 });
 ipcMain.on("win-resize-end", (e) => { if (ok(e)) saveState(); });
-ipcMain.on("win-retry", (e) => { if (ok(e) && win) win.loadURL(PAGE); });
+ipcMain.on("win-retry", (e) => { if (ok(e) && win) loadPage(); });
 // 투명한 하늘 위에서는 클릭이 뒤(바탕화면·다른 프로그램)로 통과해요. 마우스 움직임은 계속 받아서 다시 켤 수 있어요.
 ipcMain.on("win-ignore", (e, on) => { if (!ok(e) || !win) return; if (on) win.setIgnoreMouseEvents(true, { forward: true }); else win.setIgnoreMouseEvents(false); });
 

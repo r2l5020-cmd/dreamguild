@@ -468,6 +468,7 @@ html.program #skychat .sc-list{height:110px}
 html.program #sky{bottom:428px;width:min(300px,30vw);min-width:0;padding:6px 12px 8px;flex-direction:column}
 html.program #sky .sk-time{font-size:28px}
 html.program #sky .sk-bar{width:100%}
+html.program #village .vboard[style*="auto"]{width:auto}
 html.program #village .vpeek{align-self:center;height:22px;padding:0 9px;white-space:nowrap;font-family:var(--pixel);font-size:11px;border:1.5px solid var(--wood-d);border-radius:999px;background:rgba(255,248,234,.92);color:var(--wood-d);text-shadow:none;box-shadow:0 2px 0 rgba(59,42,30,.25);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 html.program #village .vpeek:hover{background:var(--gold);color:var(--ink)}
 html.program #village .vpeek.on{margin-top:3px;height:20px;font-size:10px;background:rgba(255,255,255,.8)}
