@@ -155,7 +155,7 @@ function buildChatBar() {
   if (document.getElementById("chatbar")) return;
   const f = document.createElement("form");
   f.id = "chatbar"; f.className = "chatbar hit"; f.dataset.form = "bar"; f.autocomplete = "off";
-  f.innerHTML = '<span class="who" id="barWho"></span><label for="sayIn" class="sr">메시지</label><input id="sayIn" maxlength="200" autocomplete="off"><button type="submit" class="send">말하기</button><button type="button" class="jumpb" data-act="jump" title="점프 (↑ 키)">⤴ 점프</button><button type="button" class="log" data-act="openLog" title="채팅 기록 보기">💬 기록</button>';
+  f.innerHTML = '<button type="button" class="helpb" data-act="help" title="DREAM GUILD 사용법">❓ 도움말</button><span class="who" id="barWho"></span><label for="sayIn" class="sr">메시지</label><input id="sayIn" maxlength="200" autocomplete="off"><button type="submit" class="send">말하기</button><button type="button" class="jumpb" data-act="jump" title="점프 (↑ 키)">⤴ 점프</button><button type="button" class="log" data-act="openLog" title="채팅 기록 보기">💬 기록</button>';
   const inp = f.querySelector("input");
   f.addEventListener("pointerdown", () => D.wantFocus(true));
   inp.addEventListener("focus", () => {
@@ -589,12 +589,27 @@ function paintBoards() {
     const items = boardTasks(m.id), nDone = doneTasks(m.id).length;
     const html = '<ul>' + items.map((t) => '<li class="vt' + (t.done ? " done" : "") + (t.id === S.justDone ? " fresh" : "") + '">' +
       (mine ? '<label><input type="checkbox" data-toggle="' + esc(t.id) + '"' + (t.done ? " checked" : "") + '><i class="vck" aria-hidden="true"></i>' : '<i class="vdot" aria-hidden="true"></i>') +
-      '<span class="vtt">' + esc(t.title) + '</span><em class="vs ' + t.size + '">' + t.size + "</em>" + (mine ? "</label>" + '<button type="button" class="vdel" data-del="' + esc(t.id) + '" aria-label="' + esc(t.title) + ' 지우기">✕</button>' : "") + "</li>").join("") + "</ul>" +
+      '<span class="vtt" title="' + esc(t.title) + '">' + esc(t.title) + '</span><em class="vs ' + t.size + '">' + t.size + "</em>" + (mine ? "</label>" + '<button type="button" class="vdel" data-del="' + esc(t.id) + '" aria-label="' + esc(t.title) + ' 지우기">✕</button>' : "") + "</li>").join("") + "</ul>" +
       (nDone ? '<button type="button" class="vdone" data-done="' + m.id + '">✓ 완료한 할 일 <b>' + nDone + "</b></button>" : "");
     if (list._sig !== html) { list._sig = html; list.innerHTML = html; }
   });
   S.justDone = null;
+  layoutBoards();
 }
+/* 집이 붙어 있어도 할 일 판이 겹치지 않게: 판 너비 ≤ 양옆 집 가운데까지의 거리 (판은 집 가운데 정렬이라 이러면 절대 안 겹쳐요) */
+function layoutBoards() {
+  if (!WEB) return;
+  const boards = [...document.querySelectorAll("#village .vboard")]; if (!boards.length) return;
+  const W = window.innerWidth, MAXW = 180, GAP = 8;
+  const cs = boards.map((b) => { const r = b.parentElement.getBoundingClientRect(); return r.left + r.width / 2; });
+  boards.forEach((b, i) => {
+    const dL = i > 0 ? cs[i] - cs[i - 1] : Infinity, dR = i < cs.length - 1 ? cs[i + 1] - cs[i] : Infinity;
+    const edge = 2 * Math.min(cs[i] - 4, W - cs[i] - 4);
+    b.style.width = Math.max(60, Math.floor(Math.min(MAXW, dL - GAP, dR - GAP, edge))) + "px";
+  });
+}
+window.addEventListener("resize", () => layoutBoards());
+window.addEventListener("load", () => layoutBoards());
 function checkFx(el, xp) {
   const r = el.getBoundingClientRect(), fx = document.createElement("div");
   fx.className = "checkfx"; fx.style.left = (r.left + r.width / 2) + "px"; fx.style.top = (r.top + r.height / 2) + "px";
@@ -618,15 +633,61 @@ function doneHTML(id) {
     "</div>";
 }
 
+/* ---------- 도움말 ---------- */
+function helpHTML() {
+  const sec = (icon, title, items) => '<section class="hsec"><h3><span class="hic">' + icon + "</span>" + title + "</h3><ul>" + items.map((x) => "<li>" + x + "</li>").join("") + "</ul></section>";
+  const k = (s) => "<kbd>" + s + "</kbd>";
+  const todo = WEB ? [
+    "<b>내 집 위</b>의 「+ 할 일 추가」 칸에 적고 " + k("Enter") + "를 눌러요.",
+    "칸 옆 <b>S / M / L</b> 버튼은 일의 크기예요. 누를 때마다 바뀌고, 끝내면 " + "S " + XP.S + " · M " + XP.M + " · L " + XP.L + " XP를 받아요.",
+    "다 한 일은 왼쪽 <b>네모 칸을 눌러 체크</b>해요. 반짝! 하고 XP가 올라가요. 잘못 눌렀으면 한 번 더 눌러 풀어요.",
+    "오늘 끝낸 일은 줄이 그어진 채 흐리게 남고, 다음 날부터는 집 위에서 사라져요. 집 아래 <b>「✓ 완료한 할 일」</b>을 누르면 날짜별로 다시 볼 수 있어요.",
+    "할 일에 마우스를 올리면 ✕가 나와서 지울 수 있어요. 다른 사람 집 위의 할 일은 보기만 할 수 있어요.",
+  ] : [
+    "내 캐릭터를 누르면 나오는 카드의 「할 일」에서 적고, 크기(S·M·L)를 고른 뒤 「추가」를 눌러요.",
+    "다 한 일은 체크칸을 눌러요. S " + XP.S + " · M " + XP.M + " · L " + XP.L + " XP를 받아요. (웹 버전에서는 각자 집 위에서 바로 적고 체크해요)",
+  ];
+  return '<div class="card wide hit help" role="dialog" aria-label="도움말"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
+    '<p class="big">❓ DREAM GUILD 사용법</p><p class="muted">한 주의 할 일을 끝낼수록 경험치가 쌓이고, 각자의 꿈을 향해 레벨업하는 우리 팀 마을이에요.</p>' +
+    sec("📝", "할 일 적고 체크하기", todo) +
+    sec("⭐", "레벨과 골드", [
+      "끝낸 할 일의 XP가 쌓이면 레벨이 올라요. 다음 레벨까지 100 + 20×(지금 레벨−1) XP, 최대 Lv.20이에요.",
+      "레벨이 오르면 꿈 로드맵의 새 칭호를 얻고, 방 꾸미기 가구와 멋진 옷이 열려요.",
+      "<b>골드</b>는 모은 XP만큼 생겨요. 옷을 사면 골드만 줄고 레벨은 그대로예요.",
+    ]) +
+    sec("❤", "HP · MP · 스킬", [
+      "<b>HP</b>는 평일 아침 9시에 가득 찼다가 저녁 6시까지 천천히 닳아요. 동료의 회복 스킬로 다시 채워요.",
+      "<b>MP</b>는 할 일을 끝내면 쌓여요. 내 캐릭터를 눌러 고유 스킬을 써 보세요. 스킬마다 하루 한 번이에요.",
+    ]) +
+    sec("🏘", "마을 둘러보기", [
+      (WEB ? "뒤쪽 <b>집을 누르면</b> 그 사람의 방이 열려요. " : "🏠 버튼이나 내 카드에서 방에 들어가요. ") + "내 방에서는 「방 꾸미기」로 벽지·바닥·가구를 바꿀 수 있어요.",
+      "<b>내 캐릭터</b>를 누르면 레벨·골드·HP/MP·스킬·옷장이 보이고, <b>다른 사람</b>을 누르면 이름·직업·HP·MP가 보여요.",
+      "<b>모닥불</b>을 누르면 이번 주 팀 소식과 팀 목표 XP가 보여요. 끌면 캐릭터 줄 위치를 옮길 수 있어요.",
+    ]) +
+    sec("💬", "채팅 · 걷기 · 점프", [
+      "맨 아래 채팅창에 쓰고 " + k("Enter") + "를 누르면 내 캐릭터 머리 위에 말풍선이 떠요. 지난 이야기는 「💬 기록」에서 봐요.",
+      "채팅창이 비어 있을 때 " + k("←") + " " + k("→") + "로 걷고, " + k("↑") + "로 점프해요. 채팅창 밖에서는 " + k("스페이스") + ", 또는 「⤴ 점프」 버튼도 돼요.",
+      "내 점프와 걷기는 동료들 화면에도 그대로 보여요.",
+    ]) +
+    sec("👕", "옷가게와 옷장", [
+      (WEB ? "마을의 <b>분홍 옷가게</b>나 " : "") + "「👕 옷가게」 버튼으로 들어가요. 그림을 누르면 거울 앞에서 먼저 입어 볼 수 있어요.",
+      "맨 위 <b>⭐ 직업 전용 옷</b>은 나만 살 수 있어요. 🔒 표시가 붙은 옷은 그 레벨이 되면 열려요.",
+      "산 옷은 내 카드의 <b>옷장</b>이나 옷가게에서 눌러 입고 벗어요. 동료들 화면에도 입은 모습이 보여요.",
+    ]) +
+    '<p class="muted" style="margin-top:12px;text-align:center">언제든 채팅창 왼쪽 「❓ 도움말」을 누르면 이 안내를 다시 볼 수 있어요.</p></div>';
+}
+
 /* ---------- 카드 ---------- */
 function openCard(c) { if (S.walk) exitWalk(true); S.card = c; renderCard(); if (c && c !== "who") D.wantFocus(true); }
 function closeCard() { S.edit = null; S.pickSkill = null; S.tryOn = null; S.card = null; renderCard(); if (!S.say) D.wantFocus(false); }
 function renderCard() {
   const box = document.getElementById("cards"); let html = "";
   const c = S.card;
-  if (!S.me && c !== "settings") {
+  if (!S.me && c !== "settings" && c !== "help") {
     html = '<div class="card hit center" role="dialog" aria-label="나는 누구인가요"><p class="big">어서 오세요, 모험가님!</p><p class="muted">누구로 들어갈까요? 이 컴퓨터가 기억해요.</p><div class="pick">' +
       MEMBERS.map((m) => '<button data-me="' + m.id + '"><img src="' + IMG(m.id) + '" alt=""><b>' + esc(m.name) + '</b><span class="muted" style="margin:0">' + esc(m.cls) + "</span></button>").join("") + "</div></div>";
+  } else if (c === "help") {
+    html = helpHTML();
   } else if (c === "who") {
     html = '<div class="card hit center" role="dialog" aria-label="사람 바꾸기"><button class="x" data-act="close" aria-label="닫기">✕</button><p class="big">누구로 바꿀까요?</p><div class="pick">' +
       MEMBERS.map((m) => '<button data-me="' + m.id + '"><img src="' + IMG(m.id) + '" alt=""><b>' + esc(m.name) + "</b></button>").join("") + "</div></div>";
@@ -803,6 +864,7 @@ document.addEventListener("click", async (e) => {
   else if (a === "openShop") { if (!S.me) { openCard("who"); return; } if (S.card && S.card.type === "shop" && el.closest(".ctrl")) closeCard(); else { S.tryOn = null; openCard({ type: "shop" }); } }
   else if (a === "clearTry") { S.tryOn = null; renderCard(); }
   else if (a === "jump") jumpMe();
+  else if (a === "help") { if (S.say) exitWalk(true); if (S.card === "help") closeCard(); else openCard("help"); }
   else if (a === "minimize") { if (S.walk) exitWalk(); if (S.say) closeSay(); D.minimize(); }
   else if (a === "miniFromQuit") { closeCard(); setMini(true); }
   else if (a === "askQuit") openCard("quit");

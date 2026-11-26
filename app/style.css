@@ -291,8 +291,10 @@ html.web .ground{left:0!important;width:100%!important;border-radius:0}
 #village .vboard{pointer-events:auto;width:clamp(124px,11.5vw,180px);margin-bottom:6px;display:flex;flex-direction:column;align-items:stretch;gap:3px;font-family:var(--pixel);font-size:clamp(11px,.82vw,13px);line-height:1.3;color:#2E2318;text-shadow:0 0 2px #fff,0 0 3px #fff,1px 1px 0 rgba(255,255,255,.9)}
 #village .vboard:empty{display:none}
 #village .vlist ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
-#village .vt{position:relative;display:flex;align-items:flex-start}
+#village .vt{position:relative;display:flex;align-items:flex-start;min-width:0}
 #village .vt label{display:flex;align-items:flex-start;gap:5px;flex:1;min-width:0;cursor:pointer}
+#village .vboard,#village .vlist,#village .vlist ul{min-width:0;max-width:100%}
+#village .vdone{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 #village .vt input{position:absolute;opacity:0;width:14px;height:14px;margin:0;left:0;top:1px;cursor:pointer}
 #village .vck{flex:none;width:13px;height:13px;margin-top:1px;background:rgba(255,255,255,.85);border:2px solid var(--wood-d);border-radius:2px;box-shadow:1px 1px 0 rgba(59,42,30,.35)}
 #village .vt input:focus-visible+.vck{outline:2px solid var(--gold);outline-offset:1px}
@@ -300,14 +302,14 @@ html.web .ground{left:0!important;width:100%!important;border-radius:0}
 #village .vt.done .vck{background:#8DBB5E;position:relative}
 #village .vt.done .vck::after{content:"";position:absolute;left:2px;top:-1px;width:4px;height:7px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(40deg)}
 #village .vdot{flex:none;width:7px;height:7px;margin:5px 3px 0 2px;background:var(--wood-d);border-radius:1px;box-shadow:0 0 0 1px rgba(255,255,255,.8)}
-#village .vtt{flex:1;min-width:0;overflow-wrap:anywhere}
+#village .vtt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #village .vt.done .vtt{text-decoration:line-through;text-decoration-thickness:2px;opacity:.5}
 #village .vt.done .vs{opacity:.4}
 #village .vt.fresh{animation:fresh .9s ease-out}
 @keyframes fresh{0%{background:rgba(245,196,81,.75)}100%{background:transparent}}
 #village .vs{flex:none;margin-left:3px;font-style:normal;font-size:9px;line-height:13px;padding:0 3px;border-radius:3px;border:1px solid rgba(59,42,30,.45);text-shadow:none;color:var(--ink)}
 #village .vs.S{background:#BFE3A3}#village .vs.M{background:#F7D58B}#village .vs.L{background:#F2A58C}
-#village .vdel{position:absolute;right:-17px;top:0;width:16px;height:16px;padding:0;border:0;background:transparent;color:var(--wood-d);font-size:10px;opacity:0;cursor:pointer}
+#village .vdel{position:absolute;right:0;top:0;width:16px;height:16px;padding:0;border:0;border-radius:4px;background:rgba(255,248,234,.95);color:var(--wood-d);font-size:10px;opacity:0;cursor:pointer}
 #village .vt:hover .vdel,#village .vdel:focus-visible{opacity:.8}
 #village .vadd{display:flex;gap:3px;align-items:center}
 #village .vin{flex:1;min-width:0;height:24px;padding:0 6px;font-family:var(--pixel);font-size:12px;border:2px dashed rgba(78,46,23,.55);border-radius:6px;background:rgba(255,255,255,.55);color:var(--ink);user-select:text;-webkit-user-select:text}
@@ -327,8 +329,8 @@ html.web .ground{left:0!important;width:100%!important;border-radius:0}
 @keyframes xpUp{0%{transform:translateY(4px) scale(.7);opacity:0}20%{transform:translateY(-4px) scale(1.15);opacity:1}100%{transform:translateY(-30px);opacity:0}}
 
 /* 점프 */
-.pal.hop .av{animation:hop .55s cubic-bezier(.3,.7,.4,1)}
-@keyframes hop{0%{transform:scale(1.08,.88)}15%{transform:translateY(-6px) scale(.94,1.08)}45%{transform:translateY(-46px) scale(1,1)}75%{transform:translateY(-6px)}88%{transform:translateY(0) scale(1.1,.88)}100%{transform:scale(1,1)}}
+.pal.hop .av{animation:hop .78s linear}
+@keyframes hop{0%{transform:scale(1.1,.86);animation-timing-function:ease-out}12%{transform:translateY(-10px) scale(.92,1.1);animation-timing-function:cubic-bezier(.2,.7,.4,1)}48%{transform:translateY(-96px) scale(1,1);animation-timing-function:cubic-bezier(.6,0,.8,.4)}82%{transform:translateY(-4px) scale(.96,1.05);animation-timing-function:ease-out}90%{transform:translateY(0) scale(1.12,.86)}100%{transform:scale(1,1)}}
 .jumpfx{position:absolute;left:50%;bottom:0;width:0;height:0;pointer-events:none;z-index:4}
 .jumpfx i{position:absolute;bottom:0;width:9px;height:9px;border-radius:50%;background:rgba(255,248,234,.95);box-shadow:0 0 0 1.5px rgba(120,90,60,.35);animation:dust .55s ease-out forwards}
 .jumpfx .d1{--dx:-26px}.jumpfx .d2{--dx:-12px;animation-delay:.03s}.jumpfx .d3{--dx:12px;animation-delay:.03s}.jumpfx .d4{--dx:26px}
@@ -336,6 +338,13 @@ html.web .ground{left:0!important;width:100%!important;border-radius:0}
 .jumpfx b{position:absolute;bottom:60px;font-size:13px;color:#F5C451;text-shadow:0 0 2px #7A4A10;animation:twinkleUp .8s ease-out forwards}
 .jumpfx .s1{left:-34px}.jumpfx .s2{left:22px;animation-delay:.1s;font-size:11px}.jumpfx .s3{left:-6px;bottom:96px;animation-delay:.18s}
 @keyframes twinkleUp{0%{transform:scale(0) rotate(0);opacity:0}30%{transform:scale(1.3) rotate(40deg);opacity:1}100%{transform:translateY(-18px) scale(.6) rotate(120deg);opacity:0}}
+.chatbar .helpb{border:2px solid #5A3A20;background:#FFF8EA;color:var(--wood-d);font-size:12px}
+.chatbar .helpb:hover{background:var(--gold);color:var(--ink)}
+.help .hsec{margin-top:10px;padding:10px 12px;background:var(--card);border:1.5px solid var(--line);border-radius:12px}
+.help .hsec h3{margin:0 0 6px;display:flex;align-items:center;gap:6px;font-size:15px}
+.help .hic{font-size:18px}
+.help ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font-size:13px;line-height:1.5}
+.help kbd{display:inline-block;min-width:20px;padding:0 5px;font-family:var(--body);font-size:11px;line-height:18px;text-align:center;background:#fff;border:1.5px solid var(--line);border-bottom-width:3px;border-radius:5px;color:var(--ink)}
 .chatbar .jumpb{border:2px solid #5A3A20;background:#BFE3A3;color:var(--ink);font-size:12px}
 @media (prefers-reduced-motion:reduce){.pal.hop .av,.jumpfx i,.jumpfx b,.checkfx i{animation-duration:.01s}}
 
