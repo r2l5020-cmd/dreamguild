@@ -334,7 +334,7 @@ function addChat(m) {
   if (S.chat.some((c) => c.id === m.id)) return;
   S.chat.push(m); S.chat.sort((a, b) => (typeof a.id === "number" && typeof b.id === "number") ? a.id - b.id : String(a.created_at).localeCompare(String(b.created_at))); if (S.chat.length > 1000) S.chat = S.chat.slice(-1000);
   if (m.kind === "lunch") {
-    const fresh = Date.now() - new Date(m.created_at).getTime() < LUNCH_HOURS * 3600e3, prev = S.lunch[m.member];
+    const fresh = Date.now() - new Date(m.created_at).getTime() < 60000, prev = S.lunch[m.member];
     if (fresh && (!prev || new Date(prev.at) <= new Date(m.created_at))) {
       const live = Date.now() - new Date(m.created_at).getTime() < 60000 && m.member !== S.me && S.ready;
       if (live && !spinning && document.querySelector("#village .wheel")) spinTo(MENUS.indexOf(m.text) >= 0 ? MENUS.indexOf(m.text) : 0, () => showLunch(m.member, m.text, m.created_at));
@@ -754,7 +754,7 @@ function paintSkyChat() {
 
 /* ---------- 점심 룰렛 (웹: 마을 표지판 위) ---------- */
 const MENUS = ["닭갈비", "쌀국수", "김치찌개", "보리밥", "부대찌개", "돈까스", "마라탕", "분식", "샌드위치", "세무서급식", "햄버거", "중국집", "카레", "콩나물국밥", "순대국", "고양이부엌", "배민"];
-const LUNCH_HOURS = 3; // 추천메뉴가 캐릭터 옆에 떠 있는 시간
+const LUNCH_MS = 20000; // 추천메뉴가 캐릭터 옆에 떠 있는 시간 (20초)
 const WHEEL_COLORS = ["#F7D58B", "#F2A58C", "#BFE3A3", "#9CCBE8", "#F2B8CF", "#D9C4F0", "#FCE38A", "#A8DCC8"];
 S.lunch = {};
 let wheelRot = 0, spinning = false;
@@ -795,10 +795,15 @@ async function spinLunch() {
     catch (e) { showLunch(me, MENUS[i], new Date().toISOString()); }
   });
 }
-function showLunch(member, menu, at) { S.lunch[member] = { menu, at }; if (PAL[member]) paintPal(member); }
+function showLunch(member, menu, at, shownAt) {
+  S.lunch[member] = { menu, at, shownAt: shownAt || Date.now() };
+  if (PAL[member]) paintPal(member);
+  clearTimeout(showLunch["t" + member]);
+  showLunch["t" + member] = setTimeout(() => paintLunch(member), Math.max(0, S.lunch[member].shownAt + LUNCH_MS - Date.now()) + 100);
+}
 function paintLunch(id) {
   const el = PAL[id]; if (!el) return;
-  const l = S.lunch[id], live = l && Date.now() - new Date(l.at).getTime() < LUNCH_HOURS * 3600e3;
+  const l = S.lunch[id], live = l && Date.now() - (l.shownAt || 0) < LUNCH_MS;
   let tag = el.querySelector(".lunchtag");
   if (!live) { if (tag) tag.remove(); return; }
   if (!tag) { tag = document.createElement("span"); tag.className = "lunchtag"; el.appendChild(tag); }
@@ -921,7 +926,7 @@ function helpHTML() {
       "쪽지가 오면 " + (WEB ? "<b>내 집 위 할 일 맨 위</b>에 「✉ ○○ 님의 쪽지」가 떠요. 누르면 읽고 답장할 수 있어요. " : "알림이 떠요. ") + "지난 쪽지는 내 카드의 「✉ 쪽지함」에 있어요.",
     ]) +
     (WEB ? sec("🍽", "점심 룰렛 · 하늘 시계", [
-      "마을 표지판 위 룰렛의 「돌리기」를 누르면 오늘의 <b>추천메뉴</b>가 나와요. 돌린 사람 옆에 " + LUNCH_HOURS + "시간 동안 떠 있고, 동료들 화면에서도 같이 돌아가요.",
+      "마을 표지판 위 룰렛의 「돌리기」를 누르면 오늘의 <b>추천메뉴</b>가 나와요. 돌린 사람 옆에 " + (LUNCH_MS / 1000) + "초 동안 떠 있고, 동료들 화면에서도 같이 돌아가요. 결과는 채팅 기록에도 남아요.",
       "하늘 가운데에는 지금 시각, " + WEATHER.name + " 날씨, 오늘 비 소식, <b>퇴근(18시)까지 남은 시간</b>이 보여요.",
     ]) : "") +
     sec("👕", "옷가게와 옷장", [
@@ -1056,7 +1061,10 @@ function renderCard() {
 /* ---------- 데이터 ---------- */
 let lastSig = "", loadFailToast = 0;
 async function reload(force) {
-  try { const d = await store.load(); S.tasks = d.tasks || []; S.routes = d.routes || {}; S.rooms = await store.loadRooms(); S.skills = await store.loadSkills(); try { S.notes = await store.loadNotes(); } catch (e) { S.notes = S.notes || []; } }
+  try {
+    const [d, rooms, skills, notes] = await Promise.all([store.load(), store.loadRooms(), store.loadSkills(), store.loadNotes().catch(() => S.notes || [])]); // 동시에 불러와서 빨리 떠요
+    S.tasks = d.tasks || []; S.routes = d.routes || {}; S.rooms = rooms; S.skills = skills; S.notes = notes;
+  }
   catch (e) { if (Date.now() - loadFailToast > 60000) { loadFailToast = Date.now(); toast("팀 기록을 불러오지 못했어요. 인터넷이나 연결 설정을 확인해 주세요."); } return; }
   announceNewSkills();
   announceNewNotes();
@@ -1243,11 +1251,11 @@ function startLive() {
     try { store = makeRemote(); } catch (e) { store = makeLocal(); toast("팀 연결에 실패해 체험 모드로 열었어요."); }
   } else store = makeLocal();
   if (!S.me) renderCard();
+  if (WEB) paintSky(true);
+  const chatP = store.loadChat().catch(() => []).then((c) => { S.chat = c; paintSkyChat(); return c; }); // 채팅 기록은 먼저 띄워요
   await reload();
-  try { S.chat = await store.loadChat(); } catch (e) { S.chat = []; }
-  paintSkyChat();
-  S.chat.filter((m) => m.kind === "lunch" && byId(m.member) && Date.now() - new Date(m.created_at).getTime() < LUNCH_HOURS * 3600e3).forEach((m) => { S.lunch[m.member] = { menu: m.text, at: m.created_at }; });
-  MEMBERS.forEach((m) => paintLunch(m.id));
+  await chatP;
+  S.chat.filter((m) => m.kind === "lunch" && byId(m.member) && Date.now() - new Date(m.created_at).getTime() < LUNCH_MS).forEach((m) => showLunch(m.member, m.text, m.created_at, new Date(m.created_at).getTime()));
   S.ready = true;
   if (WEB) { paintSky(true); loadWeather(); }
   startLive();
