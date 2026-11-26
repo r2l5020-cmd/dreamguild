@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("deskShell", {
   resize: (w, h) => ipcRenderer.send("win-resize", w, h),
   resizeEnd: () => ipcRenderer.send("win-resize-end"),
   retry: () => ipcRenderer.send("win-retry"),
+  setIgnore: (on) => ipcRenderer.send("win-ignore", !!on),
   onBeforeClose: (fn) => ipcRenderer.on("before-close", () => fn()),
   onMaxState: (fn) => ipcRenderer.on("max-state", (_e, v) => fn(!!v)),
 });

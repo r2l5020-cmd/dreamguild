@@ -63,6 +63,8 @@ ipcMain.on("win-resize", (e, wpx, hpx) => {
 });
 ipcMain.on("win-resize-end", (e) => { if (ok(e)) saveState(); });
 ipcMain.on("win-retry", (e) => { if (ok(e) && win) win.loadURL(PAGE); });
+// 투명한 하늘 위에서는 클릭이 뒤(바탕화면·다른 프로그램)로 통과해요. 마우스 움직임은 계속 받아서 다시 켤 수 있어요.
+ipcMain.on("win-ignore", (e, on) => { if (!ok(e) || !win) return; if (on) win.setIgnoreMouseEvents(true, { forward: true }); else win.setIgnoreMouseEvents(false); });
 
 app.whenReady().then(createWindow);
 app.on("window-all-closed", () => app.quit());

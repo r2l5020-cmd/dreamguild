@@ -92,7 +92,7 @@ function makeRemote() {
 }
 
 /* ---------- 상태 ---------- */
-const S = { tasks: [], routes: {}, chat: [], skills: [], week: mondayOf(new Date()), me: null, card: null, say: false, size: "M", draft: "", online: new Set(), bubbles: {}, hover: null, off: 40 };
+const S = { openBoards: new Set(), tasks: [], routes: {}, chat: [], skills: [], week: mondayOf(new Date()), me: null, card: null, say: false, size: "M", draft: "", online: new Set(), bubbles: {}, hover: null, off: 40 };
 try { S.me = localStorage.getItem("dreamguild-me"); if (!byId(S.me)) S.me = null; } catch (e) {}
 try { const o = parseInt(localStorage.getItem("dg-offset"), 10); if (!isNaN(o)) S.off = o; } catch (e) {}
 let store;
@@ -618,11 +618,19 @@ function paintBoards() {
     if (form) { const b = form.querySelector(".vsz"); b.textContent = S.size; b.className = "vsz " + S.size; b.title = "크기 " + S.size + " · " + XP[S.size] + " XP (누르면 바뀌어요)"; b.setAttribute("aria-label", b.title); }
     const items = boardTasks(m.id), nDone = doneTasks(m.id).length;
     const notes = mine ? unreadNotes() : [];
+    // 윈도우 프로그램에서는 동료의 할 일을 접어 두고, 「📋 할 일」을 눌러야 펼쳐져요 (화면을 덜 가리게)
+    if (PROGRAM && !mine && !S.openBoards.has(m.id)) {
+      const nOpen = items.filter((t) => !t.done).length;
+      const peek = items.length || nDone ? '<button type="button" class="vpeek" data-peek="' + m.id + '" title="' + esc(m.name) + ' 님의 할 일 펼치기">📋 할 일 ' + nOpen + "</button>" : "";
+      if (list._sig !== peek) { list._sig = peek; list.innerHTML = peek; }
+      return;
+    }
     const html = (notes.length ? '<div class="vnotes">' + notes.slice(0, 3).map((n) => '<button type="button" class="vnote" data-note="' + n.id + '">✉ <b>' + esc((byId(n.sender) || { name: "?" }).name) + "</b> 님의 쪽지</button>").join("") + (notes.length > 3 ? '<button type="button" class="vnote more" data-act="inbox">+' + (notes.length - 3) + "통 더</button>" : "") + "</div>" : "") +
       '<ul>' + items.map((t) => '<li class="vt' + (t.done ? " done" : "") + (t.id === S.justDone ? " fresh" : "") + '">' +
       (mine ? '<label><input type="checkbox" data-toggle="' + esc(t.id) + '"' + (t.done ? " checked" : "") + '><i class="vck" aria-hidden="true"></i>' : '<i class="vdot" aria-hidden="true"></i>') +
       '<span class="vtt" title="' + esc(t.title) + '">' + esc(t.title) + '</span><em class="vs ' + t.size + '">' + t.size + "</em>" + (mine ? "</label>" + '<button type="button" class="vdel" data-del="' + esc(t.id) + '" aria-label="' + esc(t.title) + ' 지우기">✕</button>' : "") + "</li>").join("") + "</ul>" +
-      (nDone ? '<button type="button" class="vdone" data-done="' + m.id + '">✓ 완료한 할 일 <b>' + nDone + "</b></button>" : "");
+      (nDone ? '<button type="button" class="vdone" data-done="' + m.id + '">✓ 완료한 할 일 <b>' + nDone + "</b></button>" : "") +
+      (PROGRAM && !mine ? '<button type="button" class="vpeek on" data-peek="' + m.id + '">▲ 접기</button>' : "");
     if (list._sig !== html) { list._sig = html; list.innerHTML = html; }
   });
   S.justDone = null;
@@ -811,6 +819,18 @@ function buildProgramChrome() {
   const end = () => { if (rs) { rs = null; ds.resizeEnd(); } }; grip.addEventListener("pointerup", end); grip.addEventListener("pointercancel", end);
   // 닫기 전에 마을에 "나갔어요"를 남겨요
   ds.onBeforeClose(async () => { try { await logLeave(true); } catch (e) {} ds.closeNow(); });
+  // 화면 가득일 때: 아무것도 없는 투명한 하늘 위에서는 클릭이 뒤로 통과해요 (바탕화면 아이콘·다른 프로그램을 누를 수 있어요)
+  if (ds.setIgnore) {
+    let ig = false;
+    const EMPTY = (t) => !t || t === document.documentElement || t === document.body || t.id === "village" || t.id === "row" || t.id === "cards" || t.id === "toasts" ||
+      (t.classList && (t.classList.contains("vrow") || t.classList.contains("vcol") || t.classList.contains("row") || t.classList.contains("vboard") || t.classList.contains("vlist") || t.classList.contains("toasts")));
+    const set = (on) => { if (on !== ig) { ig = on; ds.setIgnore(on); } };
+    document.addEventListener("mousemove", (e) => {
+      if (!document.documentElement.classList.contains("maxed") || dragging || rs) { set(false); return; }
+      set(EMPTY(document.elementFromPoint(e.clientX, e.clientY)));
+    }, { passive: true });
+    ds.onMaxState((on) => { if (!on) set(false); });
+  }
 }
 buildProgramChrome();
 
@@ -1174,6 +1194,7 @@ document.addEventListener("click", async (e) => {
   const nt = e.target.closest("[data-note]"); if (nt) { openNote(nt.dataset.note); return; }
   const pn = e.target.closest("[data-pen],[data-pensize]");
   if (pn) { if (pn.dataset.pen) { S.pen.color = pn.dataset.pen; S.pen.eraser = false; } else S.pen.size = +pn.dataset.pensize; syncTools(); return; }
+  const pk = e.target.closest("[data-peek]"); if (pk) { const id = pk.dataset.peek; if (S.openBoards.has(id)) S.openBoards.delete(id); else S.openBoards.add(id); paintBoards(); return; }
   const dn = e.target.closest("[data-done]"); if (dn) { toggleCard({ type: "done", id: dn.dataset.done }); return; }
   const vz = e.target.closest("[data-vsize]"); if (vz) { S.size = { S: "M", M: "L", L: "S" }[S.size] || "M"; paintBoards(); const i = vz.closest("form").querySelector(".vin"); if (i) i.focus(); return; }
   if (e.target.closest("[data-shop]")) { if (!S.me) { openCard("who"); return; } toggleCard({ type: "shop" }); return; }
