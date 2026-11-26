@@ -10,7 +10,8 @@
   - `rooms.js` — 방 꾸미기 가구, 벽지, 바닥. `skills.js` — HP·MP, 고유 스킬, 고유 효과.
   - `style.css`, `index.html`, `manifest.json`, `assets/`, `fonts/`(Galmuri11), `vendor/supabase.js`
 - `build-web.js` — `app/`을 `docs/`로 복사해요. GitHub Pages는 `docs/`를 배포해요.
-- `pack.js` — 데스크톱 앱 3종(Windows, Mac Apple Silicon, Mac Intel)을 `dist/`에 만들어요.
+- `pack.js` — (예전) 작업표시줄 띠 모양 데스크톱 앱 3종을 `dist/`에 만들어요. `@electron/packager`가 Node 26에서 압축 풀기 중 조용히 멈추는 문제가 있어요.
+- `program/` + `pack-program.js` — **윈도우 프로그램**(하늘만 투명한 일반 창). 껍데기만 Electron이고 안은 배포된 웹(`?app=program`)을 불러와서, 웹만 고치면 프로그램은 다시 켜기만 하면 최신이에요. 웹 쪽은 `window.deskShell`이 있으면 `html.program`(투명 하늘, 직접 만든 제목 줄 `#titlebar`, 오른쪽 아래 크기 조절 `#grip`, 닫기 전 퇴장 기록). `node pack-program.js` → `dist/program/DreamGuild-win32-x64/DreamGuild.exe`, `dist/DreamGuild-Windows.zip`. program/ 파일(main.js·preload.js)을 바꿨을 때만 다시 빌드해요. 서명이 없어서 처음 실행 때 SmartScreen 경고가 떠요.
 - `setup.sql` — Supabase 표(dg_tasks, dg_members, dg_chat, dg_rooms, dg_skills, dg_notes), RLS, 실시간 정책. 1~8번 모두 실행돼 있어요(8번 dg_notes 쪽지는 2026-11-26 실행). Supabase 프로젝트 이름은 noonworship이에요.
 - `설치안내.md` — 팀원용 설치 안내.
 
