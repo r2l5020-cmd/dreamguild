@@ -155,7 +155,7 @@ function buildChatBar() {
   if (document.getElementById("chatbar")) return;
   const f = document.createElement("form");
   f.id = "chatbar"; f.className = "chatbar hit"; f.dataset.form = "bar"; f.autocomplete = "off";
-  f.innerHTML = '<span class="who" id="barWho"></span><label for="sayIn" class="sr">메시지</label><input id="sayIn" maxlength="200" autocomplete="off"><button type="submit" class="send">말하기</button><button type="button" class="log" data-act="openLog" title="채팅 기록 보기">💬 기록</button>';
+  f.innerHTML = '<span class="who" id="barWho"></span><label for="sayIn" class="sr">메시지</label><input id="sayIn" maxlength="200" autocomplete="off"><button type="submit" class="send">말하기</button><button type="button" class="jumpb" data-act="jump" title="점프 (↑ 키)">⤴ 점프</button><button type="button" class="log" data-act="openLog" title="채팅 기록 보기">💬 기록</button>';
   const inp = f.querySelector("input");
   f.addEventListener("pointerdown", () => D.wantFocus(true));
   inp.addEventListener("focus", () => {
@@ -167,6 +167,7 @@ function buildChatBar() {
   inp.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); exitWalk(); return; }
     if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !inp.value) { e.preventDefault(); walkKeys.add(e.key); }
+    if (e.key === "ArrowUp" && !inp.value && !e.repeat) { e.preventDefault(); jumpMe(); }
   });
   inp.addEventListener("keyup", (e) => walkKeys.delete(e.key));
   document.body.appendChild(f);
@@ -244,6 +245,7 @@ function paintAll() {
   const wk = ymd(thisWeek()), txp = S.tasks.filter((t) => t.week === wk && t.done).reduce((a, t) => a + XP[t.size], 0), k = Math.min(1, txp / CONFIG.TEAM_GOAL);
   const svg = document.getElementById("fireSvg"); if (svg) { svg.setAttribute("width", Math.round(44 + 22 * k)); svg.setAttribute("height", Math.round(50 + 25 * k)); }
   const mt = document.getElementById("fireMeter"); if (mt) mt.style.width = Math.round(k * 100) + "%";
+  paintBoards();
   placeRow();
 }
 /* 살짝 걸어 다니기 */
@@ -310,7 +312,7 @@ function paintSay() {
   const k = S.me || "";
   if (paintSay._k === k) return; paintSay._k = k;
   who.innerHTML = S.me ? '<img src="' + IMG(S.me) + '" alt="">' + esc(byId(S.me).name) : "";
-  inp.placeholder = S.me ? "말하면 머리 위에 말풍선이 떠요 · Enter 보내기 · 비어 있을 때 ← → 걷기" : "먼저 누구로 들어갈지 골라 주세요";
+  inp.placeholder = S.me ? "말하면 머리 위에 말풍선이 떠요 · Enter 보내기 · 비어 있을 때 ← → 걷기, ↑ 점프" : "먼저 누구로 들어갈지 골라 주세요";
 }
 function openSay() { enterWalk(); }
 function closeSay(keepFocus) { exitWalk(keepFocus); }
@@ -480,6 +482,8 @@ function toggleWear(oid) {
 async function buyOutfit(oid) {
   if (!S.me) { openCard("who"); return; }
   const o = outfitById(oid), c = closetOf(S.me); if (!o || c.owned.includes(oid)) return;
+  if (o.cls && o.cls !== S.me) return;
+  if ((o.lv || 1) > levelInfo(xpOf(S.me)).lv) { toast("Lv." + o.lv + "이 되면 살 수 있어요."); return; }
   const g = goldOf(S.me);
   if (g < o.price) { toast("골드가 " + (o.price - g) + " 모자라요. 할 일을 끝내면 XP만큼 골드가 생겨요."); return; }
   c.owned.push(oid); c.wear[o.slot] = oid;
@@ -502,17 +506,116 @@ function shopHTML() {
   if (!S.me) return "";
   const c = closetOf(S.me), g = goldOf(S.me), tryOn = S.tryOn || {}, look = Object.assign({}, c.wear, tryOn);
   Object.keys(look).forEach((k) => { if (!look[k]) delete look[k]; });
-  const rows = SLOTS.map((s) => '<h3>' + s.name + '</h3><div class="shop">' + OUTFITS.filter((o) => o.slot === s.id).map((o) => {
-    const own = c.owned.includes(o.id), wearing = c.wear[o.slot] === o.id, trying = tryOn[o.slot] === o.id;
+  const myLv = levelInfo(xpOf(S.me)).lv, slotName = (id) => (SLOTS.find((s) => s.id === id) || {}).name;
+  const ware = (o) => {
+    const own = c.owned.includes(o.id), wearing = c.wear[o.slot] === o.id, trying = tryOn[o.slot] === o.id, locked = (o.lv || 1) > myLv;
     const btn = own ? '<button class="ghost sm" data-wear="' + o.id + '">' + (wearing ? "벗기" : "입기") + "</button>"
+      : locked ? '<button class="ghost sm" disabled>🔒 Lv.' + o.lv + "</button>"
       : '<button class="primary sm" data-buy="' + o.id + '"' + (g < o.price ? " disabled" : "") + ">🪙 " + o.price + "</button>";
-    return '<div class="ware' + (trying ? " try" : "") + (wearing ? " on" : "") + '"><button type="button" class="pic" data-try="' + o.id + '" title="' + (own ? "" : "눌러서 입어 보기") + '">' + outfitIcon(o) + "</button><b>" + esc(o.name) + "</b>" + (own ? '<span class="muted" style="margin:0;font-size:11px">' + (wearing ? "입는 중" : "가진 옷") + "</span>" : "") + btn + "</div>";
-  }).join("") + "</div>").join("");
+    return '<div class="ware' + (trying ? " try" : "") + (wearing ? " on" : "") + (locked && !own ? " locked" : "") + (o.lv > 1 ? " fancy" : "") + '"><button type="button" class="pic" data-try="' + o.id + '" title="' + (own ? "" : "눌러서 입어 보기") + '">' + outfitIcon(o) + "</button><b>" + esc(o.name) + "</b>" +
+      '<span class="muted" style="margin:0;font-size:11px">' + (own ? (wearing ? "입는 중" : "가진 옷") : slotName(o.slot) + (o.lv > 1 ? " · Lv." + o.lv + "+" : "") + (locked ? " · 🪙" + o.price : "")) + "</span>" + btn + "</div>";
+  };
+  const byLv = (a, b) => (a.lv || 1) - (b.lv || 1) || a.price - b.price;
+  const mineCls = OUTFITS.filter((o) => o.cls === S.me).sort(byLv);
+  const rows = (mineCls.length ? '<h3 class="clsh">⭐ ' + esc(byId(S.me).cls) + ' 전용 옷 <span class="muted" style="font-family:var(--body)">레벨이 오르면 더 멋진 옷이 열려요</span></h3><div class="shop">' + mineCls.map(ware).join("") + "</div>" : "") +
+    SLOTS.map((s) => "<h3>" + s.name + '</h3><div class="shop">' + OUTFITS.filter((o) => o.slot === s.id && !o.cls).sort(byLv).map(ware).join("") + "</div>").join("");
   return '<div class="card wide hit" role="dialog" aria-label="마을 옷가게"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
     '<p class="big">👕 마을 옷가게</p>' +
     '<div class="fitting">' + avatarHTML(S.me, look, "big") + '<div><p style="margin:0"><b>' + esc(byId(S.me).name) + '</b> 님의 골드 <b class="gold">🪙 ' + g + "</b></p>" +
     '<p class="muted" style="margin:4px 0 0">할 일을 끝내 모은 XP만큼 골드가 생겨요. 옷을 사도 레벨은 그대로예요.<br>그림을 누르면 거울 앞에서 입어 볼 수 있어요.</p>' +
     (Object.keys(tryOn).length ? '<button class="ghost sm" data-act="clearTry" style="margin-top:6px">입어 보기 그만</button>' : "") + "</div></div>" + rows + "</div>";
+}
+
+/* ---------- 효과음 (파일 없이 WebAudio로 만들어요) ---------- */
+let AC = null;
+function sfx(kind, vol) {
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === "suspended") AC.resume();
+    const t = AC.currentTime, v = (vol == null ? 1 : vol) * 0.16;
+    const tone = (type, f0, f1, at, dur, vv) => {
+      const o = AC.createOscillator(), g = AC.createGain();
+      o.type = type; o.frequency.setValueAtTime(f0, t + at); if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + at + dur);
+      g.gain.setValueAtTime(0.0001, t + at); g.gain.exponentialRampToValueAtTime(vv, t + at + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + at + dur);
+      o.connect(g); g.connect(AC.destination); o.start(t + at); o.stop(t + at + dur + 0.03);
+    };
+    if (kind === "jump") { tone("square", 240, 760, 0, 0.17, v * 0.7); tone("triangle", 480, 1200, 0.02, 0.14, v * 0.6); }
+    else if (kind === "land") tone("sine", 150, 60, 0, 0.09, v * 0.8);
+    else if (kind === "check") { tone("triangle", 988, 0, 0, 0.12, v); tone("triangle", 1319, 0, 0.08, 0.2, v); tone("sine", 1976, 0, 0.15, 0.28, v * 0.45); }
+    else if (kind === "add") tone("triangle", 660, 990, 0, 0.1, v * 0.6);
+  } catch (e) {}
+}
+
+/* ---------- 점프 (↑ 또는 스페이스, 채팅창 옆 ⤴ 버튼) ---------- */
+let lastJump = 0;
+function doJump(id, remote) {
+  const el = PAL[id]; if (!el) return;
+  el.classList.remove("hop"); void el.offsetWidth; el.classList.add("hop");
+  clearTimeout(el._hop); el._hop = setTimeout(() => el.classList.remove("hop"), 650);
+  sfx("jump", remote ? 0.4 : 1); setTimeout(() => sfx("land", remote ? 0.35 : 0.8), 440);
+  const fx = document.createElement("span"); fx.className = "jumpfx"; fx.setAttribute("aria-hidden", "true");
+  fx.innerHTML = '<i class="d1"></i><i class="d2"></i><i class="d3"></i><i class="d4"></i><b class="s1">✦</b><b class="s2">✧</b><b class="s3">✦</b>';
+  el.appendChild(fx); setTimeout(() => fx.remove(), 900);
+}
+function jumpMe() {
+  if (!S.me) { openCard("who"); return; }
+  const now = Date.now(); if (now - lastJump < 500) return; lastJump = now;
+  doJump(S.me); if (store) store.sendMove({ id: S.me, jump: now });
+}
+
+/* ---------- 집 위 할 일 판 (웹) ---------- */
+const todayStr = () => ymd(new Date());
+const doneDay = (t) => t.done_at ? ymd(new Date(t.done_at)) : t.week;
+const byMade = (a, b) => String(a.created_at || "").localeCompare(String(b.created_at || ""));
+function boardTasks(id) {
+  const wk = ymd(thisWeek()), today = todayStr();
+  return S.tasks.filter((t) => t.member === id && ((!t.done && t.week === wk) || (t.done && doneDay(t) === today))).sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || byMade(a, b));
+}
+const doneTasks = (id) => S.tasks.filter((t) => t.member === id && t.done).sort((a, b) => String(b.done_at || b.week).localeCompare(String(a.done_at || a.week)));
+function paintBoards() {
+  if (!WEB) return;
+  MEMBERS.forEach((m) => {
+    const box = document.querySelector('.vboard[data-board="' + m.id + '"]'); if (!box) return;
+    const mine = m.id === S.me;
+    let list = box.querySelector(".vlist"); if (!list) { list = document.createElement("div"); list.className = "vlist"; box.appendChild(list); }
+    let form = box.querySelector(".vadd");
+    if (mine && !form) {
+      form = document.createElement("form"); form.className = "vadd"; form.dataset.form = "vadd"; form.autocomplete = "off";
+      form.innerHTML = '<input class="vin" maxlength="60" placeholder="+ 할 일 추가 (Enter)" aria-label="새 할 일"><button type="button" class="vsz" data-vsize="cycle"></button>';
+      box.insertBefore(form, list);
+    }
+    if (!mine && form) form.remove();
+    if (form) { const b = form.querySelector(".vsz"); b.textContent = S.size; b.className = "vsz " + S.size; b.title = "크기 " + S.size + " · " + XP[S.size] + " XP (누르면 바뀌어요)"; b.setAttribute("aria-label", b.title); }
+    const items = boardTasks(m.id), nDone = doneTasks(m.id).length;
+    const html = '<ul>' + items.map((t) => '<li class="vt' + (t.done ? " done" : "") + (t.id === S.justDone ? " fresh" : "") + '">' +
+      (mine ? '<label><input type="checkbox" data-toggle="' + esc(t.id) + '"' + (t.done ? " checked" : "") + '><i class="vck" aria-hidden="true"></i>' : '<i class="vdot" aria-hidden="true"></i>') +
+      '<span class="vtt">' + esc(t.title) + '</span><em class="vs ' + t.size + '">' + t.size + "</em>" + (mine ? "</label>" + '<button type="button" class="vdel" data-del="' + esc(t.id) + '" aria-label="' + esc(t.title) + ' 지우기">✕</button>' : "") + "</li>").join("") + "</ul>" +
+      (nDone ? '<button type="button" class="vdone" data-done="' + m.id + '">✓ 완료한 할 일 <b>' + nDone + "</b></button>" : "");
+    if (list._sig !== html) { list._sig = html; list.innerHTML = html; }
+  });
+  S.justDone = null;
+}
+function checkFx(el, xp) {
+  const r = el.getBoundingClientRect(), fx = document.createElement("div");
+  fx.className = "checkfx"; fx.style.left = (r.left + r.width / 2) + "px"; fx.style.top = (r.top + r.height / 2) + "px";
+  fx.innerHTML = Array.from({ length: 12 }, (_, i) => '<i style="--a:' + (i * 30) + "deg;--c:" + ["#F5C451", "#8DBB5E", "#F27A9B", "#4F9BE0", "#FFF4DC", "#E07A2F"][i % 6] + '"></i>').join("") + "<b>+" + xp + " XP</b>";
+  document.body.appendChild(fx); setTimeout(() => fx.remove(), 1200);
+}
+function doneHTML(id) {
+  const m = byId(id), mine = id === S.me, list = doneTasks(id).slice(0, 80), today = todayStr(), yest = ymd(addDays(new Date(), -1));
+  const groups = {}; list.forEach((t) => { const d = doneDay(t); (groups[d] = groups[d] || []).push(t); });
+  const dayName = (d) => { if (d === today) return "오늘"; if (d === yest) return "어제"; const x = new Date(d + "T00:00"); return (x.getMonth() + 1) + "월 " + x.getDate() + "일 " + "일월화수목금토"[x.getDay()] + "요일"; };
+  const row = (t, showTime) => '<li class="task done">' + (mine ? '<label><input type="checkbox" data-toggle="' + esc(t.id) + '"' + (t.done ? " checked" : "") + '><span class="sz ' + t.size + '">' + t.size + '</span><span class="tt">' + esc(t.title) + "</span></label>"
+    : '<span class="sz ' + t.size + '">' + t.size + '</span><span class="tt" style="flex:1">' + esc(t.title) + "</span>") +
+    (showTime && t.done_at ? '<span class="muted" style="margin:0;font-size:11px">' + hhmm(t.done_at) + "</span>" : "") + '<span class="pts">+' + XP[t.size] + "</span></li>";
+  const left = S.tasks.filter((t) => t.member === id && !t.done && t.week < ymd(thisWeek())).sort(byMade);
+  const todayXP = (groups[today] || []).reduce((a, t) => a + XP[t.size], 0);
+  return '<div class="card wide hit" role="dialog" aria-label="' + esc(m.name) + ' 님이 끝낸 일"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
+    '<p class="big">✓ ' + esc(m.name) + " 님이 끝낸 일</p>" +
+    '<p class="muted">오늘 ' + (groups[today] || []).length + "개 · +" + todayXP + " XP" + (mine ? " · 체크를 풀면 다시 집 위로 돌아가요" : "") + "</p>" +
+    (list.length ? Object.keys(groups).sort().reverse().map((d) => "<h3>" + dayName(d) + '</h3><ul class="tasks">' + groups[d].map((t) => row(t, true)).join("") + "</ul>").join("") : '<p class="empty">아직 끝낸 일이 없어요.</p>') +
+    (left.length ? '<h3>지난주에 남은 일</h3><ul class="tasks">' + left.map((t) => '<li class="task">' + (mine ? '<label><input type="checkbox" data-toggle="' + esc(t.id) + '"><span class="sz ' + t.size + '">' + t.size + '</span><span class="tt">' + esc(t.title) + "</span></label>" : '<span class="sz ' + t.size + '">' + t.size + '</span><span class="tt" style="flex:1">' + esc(t.title) + "</span>") + '<span class="pts">+' + XP[t.size] + "</span>" + (mine ? '<button class="del" data-del="' + esc(t.id) + '" aria-label="삭제">✕</button>' : "") + "</li>").join("") + "</ul>" : "") +
+    "</div>";
 }
 
 /* ---------- 카드 ---------- */
@@ -575,6 +678,16 @@ function renderCard() {
         (mine ? '<button class="ghost" data-act="decor">방 꾸미기</button>' : "") + '<button class="ghost" data-person="' + m.id + '">👤 스테이터스</button></div>') + "</div>";
   } else if (c && c.type === "shop") {
     html = shopHTML();
+  } else if (c && c.type === "person" && c.id !== S.me) {
+    const m = byId(c.id), st = statsOf(m.id), low = st.hp / st.hpMax < 0.3;
+    html = '<div class="card hit mini-card" role="dialog" aria-label="' + esc(m.name) + '"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
+      '<div class="prof">' + avatarHTML(m.id, closetOf(m.id).wear, "big") + '<div class="pinfo"><p class="big" style="margin:0 0 2px">' + esc(m.name) + (asleep(m.id) ? ' <small class="muted" style="font-family:var(--body);font-size:12px">자리 비움</small>' : "") + "</p>" +
+      '<span class="cls">' + esc(m.cls) + "</span>" +
+      '<div class="statbar" style="margin-top:12px"><span>❤ HP</span><i class="hpbar"><b style="width:' + Math.round(st.hp / st.hpMax * 100) + "%" + (low ? ";background:#E07A2F" : "") + '"></b></i><span class="num">' + st.hp + " / " + st.hpMax + "</span></div>" +
+      '<div class="statbar"><span>💧 MP</span><i class="mpbar"><b style="width:' + Math.round(st.mp / st.mpMax * 100) + '%"></b></i><span class="num">' + st.mp + " / " + st.mpMax + "</span></div>" +
+      "</div></div></div>";
+  } else if (c && c.type === "done") {
+    html = doneHTML(c.id);
   } else if (c && c.type === "person") {
     const m = byId(c.id), route = S.routes[m.id], info = levelInfo(xpOf(m.id)), nx = nextStep(m, info.lv, route);
     const mine = m.id === S.me, wt = weekTasks(m.id), wl = weekLabel(S.week), cl = closetOf(m.id);
@@ -590,6 +703,7 @@ function renderCard() {
       "</div></div>" +
       statPanel(m.id, mine) +
       closetPanel(m.id, mine) +
+      (WEB ? '<h3>할 일</h3><p class="muted" style="margin:0">할 일은 마을의 내 집 위에서 적고 체크해요. <button class="ghost sm" data-done="' + m.id + '">✓ 완료한 할 일</button></p>' :
         '<h3>할 일<span class="wk"><button data-act="prev" aria-label="지난주">◀</button>' + wl.title + '<button data-act="next" aria-label="다음 주">▶</button></span></h3>' +
         (wt.length ? '<ul class="tasks">' + wt.map((t) => '<li class="task' + (t.done ? " done" : "") + '">' +
           (mine ? '<label><input type="checkbox" data-toggle="' + esc(t.id) + '"' + (t.done ? " checked" : "") + '><span class="sz ' + t.size + '">' + t.size + '</span><span class="tt">' + esc(t.title) + "</span></label>"
@@ -598,7 +712,7 @@ function renderCard() {
           : '<p class="empty">' + (mine ? "이번 주에 할 일을 적어 볼까요?" : "아직 할 일이 없어요.") + "</p>") +
         (mine ? '<form class="add" data-form="add"><label class="sr" for="newTask">새 할 일</label><input type="text" id="newTask" maxlength="60" placeholder="예: 쇼츠 1편 편집" value="' + esc(S.draft) + '">' +
           '<div class="seg" role="group" aria-label="크기">' + ["S", "M", "L"].map((z) => '<button type="button" data-size="' + z + '" aria-pressed="' + (S.size === z) + '">' + z + "·" + XP[z] + "</button>").join("") + "</div>" +
-          '<button class="primary" type="submit">추가</button></form>' : '<p class="note">다른 사람의 할 일은 볼 수만 있어요. 방 구경은 마음껏!</p>') +
+          '<button class="primary" type="submit">추가</button></form>' : '<p class="note">다른 사람의 할 일은 볼 수만 있어요. 방 구경은 마음껏!</p>')) +
         '<h3>꿈 로드맵</h3><ol class="road">' + stops + "</ol>" + "</div>";
   }
   const prev = box.querySelector(".card"), prevScroll = prev ? prev.scrollTop : 0, prevLog = box.querySelector(".chatlog"), logAtBottom = prevLog ? prevLog.scrollHeight - prevLog.scrollTop - prevLog.clientHeight < 30 : true, logScroll = prevLog ? prevLog.scrollTop : 0, sameKind = renderCard._k === JSON.stringify(c);
@@ -655,6 +769,8 @@ document.addEventListener("click", async (e) => {
   if (pal) { toggleCard({ type: "person", id: pal.dataset.pal }); return; }
   const house = e.target.closest("[data-house],[data-goroom],[data-person]");
   if (house) { if (house.dataset.person) toggleCard({ type: "person", id: house.dataset.person }); else toggleCard({ type: "room", id: house.dataset.house || house.dataset.goroom }); return; }
+  const dn = e.target.closest("[data-done]"); if (dn) { toggleCard({ type: "done", id: dn.dataset.done }); return; }
+  const vz = e.target.closest("[data-vsize]"); if (vz) { S.size = { S: "M", M: "L", L: "S" }[S.size] || "M"; paintBoards(); const i = vz.closest("form").querySelector(".vin"); if (i) i.focus(); return; }
   if (e.target.closest("[data-shop]")) { if (!S.me) { openCard("who"); return; } toggleCard({ type: "shop" }); return; }
   const wr = e.target.closest("[data-wear],[data-buy],[data-try]");
   if (wr) {
@@ -686,6 +802,7 @@ document.addEventListener("click", async (e) => {
   else if (a === "myroom") { if (!S.me) { openCard("who"); return; } toggleCard({ type: "room", id: S.me }); }
   else if (a === "openShop") { if (!S.me) { openCard("who"); return; } if (S.card && S.card.type === "shop" && el.closest(".ctrl")) closeCard(); else { S.tryOn = null; openCard({ type: "shop" }); } }
   else if (a === "clearTry") { S.tryOn = null; renderCard(); }
+  else if (a === "jump") jumpMe();
   else if (a === "minimize") { if (S.walk) exitWalk(); if (S.say) closeSay(); D.minimize(); }
   else if (a === "miniFromQuit") { closeCard(); setMini(true); }
   else if (a === "askQuit") openCard("quit");
@@ -707,11 +824,17 @@ document.addEventListener("click", async (e) => {
   else if (el.dataset.route) { const r = el.dataset.route; await act(() => store.setRoute("eunhwan", r)); closeCard(); toast("전직 완료! " + ROUTES[r].titles[0], true); announce("은환 님이 「" + ROUTES[r].name + "」로 전직했어요!"); }
 });
 document.addEventListener("keydown", (e) => {
-  if ((e.key === "Enter" || e.key === " ") && e.target.classList && (e.target.classList.contains("pal") || e.target.classList.contains("vhouse"))) { e.preventDefault(); e.target.click(); return; }
+  if (e.key === "Enter" && e.target.classList && (e.target.classList.contains("pal") || e.target.classList.contains("vhouse"))) { e.preventDefault(); e.target.click(); return; }
+  if ((e.key === " " || e.key === "ArrowUp") && !e.repeat && (e.target === document.body || (e.target.classList && e.target.classList.contains("pal")))) { e.preventDefault(); jumpMe(); return; }
   if (e.key === "Escape") { if (S.card && S.me) closeCard(); else if (S.say) exitWalk(); }
 });
 document.addEventListener("keyup", (e) => walkKeys.delete(e.key));
-document.addEventListener("change", (e) => { if (e.target.dataset && e.target.dataset.toggle) toggleTask(e.target.dataset.toggle, e.target.checked); });
+document.addEventListener("change", (e) => {
+  const id = e.target.dataset && e.target.dataset.toggle; if (!id) return;
+  const t = S.tasks.find((x) => x.id === id);
+  if (e.target.checked && t) { checkFx(e.target, XP[t.size]); sfx("check"); S.justDone = id; }
+  toggleTask(id, e.target.checked);
+});
 document.addEventListener("input", (e) => { if (e.target.id === "newTask") S.draft = e.target.value; });
 document.addEventListener("submit", async (e) => {
   const f = e.target.dataset && e.target.dataset.form; if (!f) return;
@@ -720,6 +843,10 @@ document.addEventListener("submit", async (e) => {
     const title = (S.draft || "").trim(); if (!title || !S.me) return;
     S.draft = ""; S.focusInput = true;
     await act(() => store.add({ member: S.me, week: ymd(S.week), title: title.slice(0, 60), size: S.size, done: false }));
+  } else if (f === "vadd") {
+    const inp = e.target.querySelector(".vin"), title = inp.value.trim(); if (!title || !S.me) return;
+    inp.value = ""; inp.focus(); sfx("add");
+    await act(() => store.add({ member: S.me, week: ymd(thisWeek()), title: title.slice(0, 60), size: S.size, done: false }));
   } else if (f === "bar") {
     const inp = document.getElementById("sayIn"), text = inp.value.trim();
     if (!S.me) { openCard("who"); return; }
@@ -762,7 +889,7 @@ function startLive() {
       list.forEach((p) => { if (p.id !== S.me && POS[p.id] && p.f !== undefined) POS[p.id].f = (typeof p.f === "number") ? p.f : null; });
       paintAll();
     },
-    move: (p) => { if (p && p.id !== S.me && POS[p.id]) { POS[p.id].f = (typeof p.f === "number") ? p.f : null; placeRow(); } },
+    move: (p) => { if (p && p.jump) { if (p.id !== S.me && PAL[p.id]) doJump(p.id, true); return; } if (p && p.id !== S.me && POS[p.id]) { POS[p.id].f = (typeof p.f === "number") ? p.f : null; placeRow(); } },
     chat: (m) => addChat(m),
     data: () => reload()
   });

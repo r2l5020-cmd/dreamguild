@@ -114,10 +114,11 @@
   MEMBERS.forEach((m, i) => {
     const draw = HOUSES[m.id];
     if (!draw) return;
-    html += '<div class="vhouse" data-house="' + m.id + '" role="button" tabindex="0" aria-label="' + m.place + ' 방 구경하기" title="' + m.place + ' — 방 구경하기"><span class="vlabel">' + m.place + "</span>" + svg(40, 40, draw(), "vart") + "</div>";
+    html += '<div class="vcol"><div class="vboard" data-board="' + m.id + '"></div><div class="vhouse" data-house="' + m.id + '" role="button" tabindex="0" aria-label="' + m.place + ' 방 구경하기" title="' + m.place + ' — 방 구경하기"><span class="vlabel">' + m.place + "</span>" + svg(40, 40, draw(), "vart") + "</div></div>";
     if (i % 2 === 1 && i < MEMBERS.length - 1) html += tree((i + 1) / 2);
   });
   html += tree(1) + "</div>";
   v.innerHTML = html;
   document.body.insertBefore(v, document.body.firstChild);
+  if (typeof paintBoards === "function") paintBoards();
 })();

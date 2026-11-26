@@ -44,6 +44,10 @@ html.web .chatbar{left:0!important;width:100%!important;padding:5px max(8px,calc
 .ware{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);text-align:center;font-size:12px}
 .ware b{font-weight:700;line-height:1.25}
 .ware.on{border-color:var(--wood);background:#FDEBC2}
+.ware.locked{opacity:.62}
+.ware.locked .pic{filter:grayscale(.5)}
+.ware.fancy:not(.locked) .pic{background:linear-gradient(135deg,#FCE9B5,#F4E3C3 60%,#FBE0EC)}
+.clsh{color:#9A6A12}
 .ware.try{border-color:var(--gold);box-shadow:0 0 0 2px rgba(227,166,60,.45)}
 .ware .pic{width:64px;height:48px;padding:4px;border:0;border-radius:8px;background:#F4E3C3;display:flex;align-items:center;justify-content:center}
 .ware .pic svg{width:100%;height:100%}
@@ -276,8 +280,67 @@ html.web .ground{left:0!important;width:100%!important;border-radius:0}
 #village .vhouse:hover .vlabel{background:var(--gold);color:var(--ink);text-shadow:none}
 #village .vhouse:focus-visible{outline:3px solid var(--gold);outline-offset:3px;border-radius:4px}
 #village svg{display:block;width:calc(var(--w) * var(--px));height:calc(var(--h) * var(--px));overflow:visible}
-#village .vhill{position:absolute;left:-6%;right:-6%;bottom:0;height:var(--base);background:#9FCA7F;border-radius:50% 50% 0 0/38px 38px 0 0;box-shadow:inset 0 4px 0 #B5D995}
-#village .vrow{position:absolute;left:0;right:0;bottom:calc(var(--base) - 6px);display:flex;justify-content:space-evenly;align-items:flex-end;padding:0 1vw}
+#village .vhill{position:absolute;left:0;right:0;bottom:0;height:var(--base);background:linear-gradient(#A6CF86,#94C474 40%,#8DBB6A);box-shadow:inset 0 4px 0 #B9DC9A}
+#village .vhill::before{content:"";position:absolute;left:0;right:0;top:-10px;height:12px;background:radial-gradient(ellipse 60px 12px at 30px 12px,#A6CF86 98%,transparent) 0 0/120px 12px repeat-x}
+#village .vrow{position:absolute;left:0;right:0;bottom:calc(var(--base) - 14px);display:flex;justify-content:space-evenly;align-items:flex-end;padding:0 1vw}
+#village .vhouse::after{content:"";display:block;width:118%;height:calc(var(--px) * 4);margin-top:calc(var(--px) * -2.5);background:radial-gradient(ellipse at center,rgba(70,100,45,.38) 0,rgba(70,100,45,.18) 45%,transparent 70%);pointer-events:none}
+#village .vcol{position:relative;display:flex;flex-direction:column;align-items:center}
+#village .vcol .vboard{position:absolute;bottom:100%;left:50%;transform:translateX(-50%)}
+
+/* 집 위 할 일 판 — 배경 없이 하늘 위에 글씨만 */
+#village .vboard{pointer-events:auto;width:clamp(124px,11.5vw,180px);margin-bottom:6px;display:flex;flex-direction:column;align-items:stretch;gap:3px;font-family:var(--pixel);font-size:clamp(11px,.82vw,13px);line-height:1.3;color:#2E2318;text-shadow:0 0 2px #fff,0 0 3px #fff,1px 1px 0 rgba(255,255,255,.9)}
+#village .vboard:empty{display:none}
+#village .vlist ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+#village .vt{position:relative;display:flex;align-items:flex-start}
+#village .vt label{display:flex;align-items:flex-start;gap:5px;flex:1;min-width:0;cursor:pointer}
+#village .vt input{position:absolute;opacity:0;width:14px;height:14px;margin:0;left:0;top:1px;cursor:pointer}
+#village .vck{flex:none;width:13px;height:13px;margin-top:1px;background:rgba(255,255,255,.85);border:2px solid var(--wood-d);border-radius:2px;box-shadow:1px 1px 0 rgba(59,42,30,.35)}
+#village .vt input:focus-visible+.vck{outline:2px solid var(--gold);outline-offset:1px}
+#village .vt label:hover .vck{background:#FFF1C9}
+#village .vt.done .vck{background:#8DBB5E;position:relative}
+#village .vt.done .vck::after{content:"";position:absolute;left:2px;top:-1px;width:4px;height:7px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(40deg)}
+#village .vdot{flex:none;width:7px;height:7px;margin:5px 3px 0 2px;background:var(--wood-d);border-radius:1px;box-shadow:0 0 0 1px rgba(255,255,255,.8)}
+#village .vtt{flex:1;min-width:0;overflow-wrap:anywhere}
+#village .vt.done .vtt{text-decoration:line-through;text-decoration-thickness:2px;opacity:.5}
+#village .vt.done .vs{opacity:.4}
+#village .vt.fresh{animation:fresh .9s ease-out}
+@keyframes fresh{0%{background:rgba(245,196,81,.75)}100%{background:transparent}}
+#village .vs{flex:none;margin-left:3px;font-style:normal;font-size:9px;line-height:13px;padding:0 3px;border-radius:3px;border:1px solid rgba(59,42,30,.45);text-shadow:none;color:var(--ink)}
+#village .vs.S{background:#BFE3A3}#village .vs.M{background:#F7D58B}#village .vs.L{background:#F2A58C}
+#village .vdel{position:absolute;right:-17px;top:0;width:16px;height:16px;padding:0;border:0;background:transparent;color:var(--wood-d);font-size:10px;opacity:0;cursor:pointer}
+#village .vt:hover .vdel,#village .vdel:focus-visible{opacity:.8}
+#village .vadd{display:flex;gap:3px;align-items:center}
+#village .vin{flex:1;min-width:0;height:24px;padding:0 6px;font-family:var(--pixel);font-size:12px;border:2px dashed rgba(78,46,23,.55);border-radius:6px;background:rgba(255,255,255,.55);color:var(--ink);user-select:text;-webkit-user-select:text}
+#village .vin:focus{outline:none;border-style:solid;border-color:var(--gold);background:rgba(255,255,255,.92)}
+#village .vin::placeholder{color:#5A4634}
+#village .vadd .vsz{flex:none;width:24px;height:24px;padding:0;font-family:var(--pixel);font-size:11px;border:2px solid var(--wood-d);border-radius:6px;color:var(--ink);cursor:pointer;text-shadow:none}
+#village .vsz.S{background:#BFE3A3}#village .vsz.M{background:#F7D58B}#village .vsz.L{background:#F2A58C}
+#village .vdone{align-self:center;margin-top:3px;height:22px;padding:0 9px;white-space:nowrap;font-family:var(--pixel);font-size:11px;border:1.5px solid var(--wood-d);border-radius:999px;background:rgba(255,248,234,.88);color:var(--wood-d);text-shadow:none;box-shadow:0 2px 0 rgba(59,42,30,.25);cursor:pointer}
+#village .vdone:hover{background:var(--gold);color:var(--ink)}
+@media (max-width:760px){#village .vboard{display:none}}
+
+/* 체크 이펙트 */
+.checkfx{position:fixed;z-index:60;width:0;height:0;pointer-events:none}
+.checkfx i{position:absolute;left:-3px;top:-3px;width:6px;height:6px;background:var(--c);box-shadow:0 0 0 1px rgba(59,42,30,.35);animation:burst .75s cubic-bezier(.2,.8,.3,1) forwards}
+@keyframes burst{from{transform:rotate(var(--a)) translateY(0) scale(1.2)}to{transform:rotate(var(--a)) translateY(-34px) scale(.3);opacity:0}}
+.checkfx b{position:absolute;left:10px;top:-10px;font-family:var(--pixel);font-size:14px;color:#3F7A1E;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;animation:xpUp 1.1s ease-out forwards}
+@keyframes xpUp{0%{transform:translateY(4px) scale(.7);opacity:0}20%{transform:translateY(-4px) scale(1.15);opacity:1}100%{transform:translateY(-30px);opacity:0}}
+
+/* 점프 */
+.pal.hop .av{animation:hop .55s cubic-bezier(.3,.7,.4,1)}
+@keyframes hop{0%{transform:scale(1.08,.88)}15%{transform:translateY(-6px) scale(.94,1.08)}45%{transform:translateY(-46px) scale(1,1)}75%{transform:translateY(-6px)}88%{transform:translateY(0) scale(1.1,.88)}100%{transform:scale(1,1)}}
+.jumpfx{position:absolute;left:50%;bottom:0;width:0;height:0;pointer-events:none;z-index:4}
+.jumpfx i{position:absolute;bottom:0;width:9px;height:9px;border-radius:50%;background:rgba(255,248,234,.95);box-shadow:0 0 0 1.5px rgba(120,90,60,.35);animation:dust .55s ease-out forwards}
+.jumpfx .d1{--dx:-26px}.jumpfx .d2{--dx:-12px;animation-delay:.03s}.jumpfx .d3{--dx:12px;animation-delay:.03s}.jumpfx .d4{--dx:26px}
+@keyframes dust{from{transform:translate(-4px,0) scale(.6);opacity:1}to{transform:translate(var(--dx),-8px) scale(1.4);opacity:0}}
+.jumpfx b{position:absolute;bottom:60px;font-size:13px;color:#F5C451;text-shadow:0 0 2px #7A4A10;animation:twinkleUp .8s ease-out forwards}
+.jumpfx .s1{left:-34px}.jumpfx .s2{left:22px;animation-delay:.1s;font-size:11px}.jumpfx .s3{left:-6px;bottom:96px;animation-delay:.18s}
+@keyframes twinkleUp{0%{transform:scale(0) rotate(0);opacity:0}30%{transform:scale(1.3) rotate(40deg);opacity:1}100%{transform:translateY(-18px) scale(.6) rotate(120deg);opacity:0}}
+.chatbar .jumpb{border:2px solid #5A3A20;background:#BFE3A3;color:var(--ink);font-size:12px}
+@media (prefers-reduced-motion:reduce){.pal.hop .av,.jumpfx i,.jumpfx b,.checkfx i{animation-duration:.01s}}
+
+/* 다른 사람 카드 (간단히) */
+.card.mini-card{width:330px}
 #village .vhouse{display:flex;flex-direction:column;align-items:center;gap:calc(var(--px) * 2)}
 #village .vart{filter:drop-shadow(0 calc(var(--px) * 1) 0 rgba(59,42,30,.18))}
 #village .vlabel{font-family:var(--pixel);font-size:clamp(10px,.85vw,13px);white-space:nowrap;background:#C98D4F;color:#FFF4DC;padding:1px 7px;border:2px solid var(--wood-d);border-radius:3px;box-shadow:0 2px 0 rgba(59,42,30,.25);text-shadow:1px 1px 0 var(--wood-d)}
