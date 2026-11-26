@@ -47,6 +47,8 @@ const P = (p) => path.join(__dirname, p);
   vi.outputToResourceEntries(res.entries);
   res.outputResource(nt);
   fs.writeFileSync(exe, Buffer.from(nt.generate()));
+  // 설치·지우기 파일 (cmd는 줄 끝이 CRLF여야 안전해요)
+  for (const f of ["INSTALL.cmd", "UNINSTALL.cmd"]) fs.writeFileSync(path.join(OUT, f), fs.readFileSync(P("program/" + f), "utf8").replace(/^﻿/, "").replace(/\r?\n/g, "\r\n"));
   // 6) 팀원에게 줄 zip
   const zipOut = P("dist/DreamGuild-Windows.zip"); fs.rmSync(zipOut, { force: true });
   execFileSync("tar", ["-a", "-cf", zipOut, "-C", path.dirname(OUT), path.basename(OUT)], { stdio: "inherit" });
