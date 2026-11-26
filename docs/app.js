@@ -648,10 +648,14 @@ function layoutBoards() {
   const fw = boards.map((b, i) => folded[i] ? b.offsetWidth : 0);
   boards.forEach((b, i) => {
     if (folded[i]) return;
-    const half = (j, d) => j < 0 || j >= boards.length ? Infinity : folded[j] ? d - fw[j] / 2 - GAP : (d - GAP) / 2;
-    const hL = half(i - 1, i > 0 ? cs[i] - cs[i - 1] : 0), hR = half(i + 1, i < cs.length - 1 ? cs[i + 1] - cs[i] : 0);
-    const edge = Math.min(cs[i] - 4, W - cs[i] - 4);
-    b.style.width = Math.max(60, Math.floor(2 * Math.min(MAXW / 2, hL, hR, edge))) + "px";
+    let h = Math.min(MAXW / 2, cs[i] - 4, W - cs[i] - 4);
+    boards.forEach((_, j) => {
+      if (j === i) return;
+      const d = Math.abs(cs[i] - cs[j]);
+      if (folded[j]) { if (fw[j] > 0) h = Math.min(h, d - fw[j] / 2 - GAP); } // 접힌 판은 버튼 폭만 피해요 (비어 있으면 무시)
+      else h = Math.min(h, (d - GAP) / 2);                                    // 펼친 판끼리는 반씩 나눠요
+    });
+    b.style.width = Math.max(60, Math.floor(2 * h)) + "px";
   });
 }
 window.addEventListener("resize", () => layoutBoards());
