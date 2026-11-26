@@ -1,0 +1,684 @@
+/* DREAM GUILD 데스크톱 친구들 — 화면 */
+const D = window.desk || { setClickable() {}, wantFocus() {}, on() {}, quit() { window.__quit = true; }, minimize() { window.__min = true; }, platform: "web" };
+const WEB = D.platform === "web";
+if (WEB) document.documentElement.classList.add("web");
+const CONFIG = Object.assign({}, CONFIG_DEFAULT);
+try { const c = JSON.parse(localStorage.getItem("dg-config")); if (c) Object.assign(CONFIG, c); } catch (e) {}
+const IMG = (id) => "assets/" + id + ".png";
+
+/* ---------- 저장소 (웹 마을과 같은 Supabase 표를 써요) ---------- */
+function uid() { return "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function makeLocal() {
+  const KEY = "dreamguild-v1"; let mem = { tasks: [], routes: {}, chat: [] };
+  const read = () => { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v) mem = Object.assign({ chat: [] }, v); } catch (e) {} return mem; };
+  const write = (d) => { mem = d; try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} };
+  let h = null;
+  return {
+    mode: "local",
+    async load() { return JSON.parse(JSON.stringify(read())); },
+    async add(t) { const d = read(); d.tasks.push(Object.assign({ id: uid(), created_at: new Date().toISOString() }, t)); write(d); },
+    async update(id, p) { const d = read(); d.tasks = d.tasks.map((t) => t.id === id ? Object.assign({}, t, p) : t); write(d); },
+    async remove(id) { const d = read(); d.tasks = d.tasks.filter((t) => t.id !== id); write(d); },
+    async setRoute(m, r) { const d = read(); d.routes[m] = r; write(d); },
+    async loadChat() { return read().chat.slice(-200); },
+    async loadRooms() { return Object.assign({}, read().rooms || {}); },
+    async loadSkills() { return (read().skills || []).slice(); },
+    async castSkill(c) { const d = read(); const m = Object.assign({ id: uid(), created_at: new Date().toISOString() }, c); d.skills = (d.skills || []).concat([m]).slice(-500); write(d); return m; },
+    async saveRoom(m, layout) { const d = read(); d.rooms = Object.assign({}, d.rooms || {}, { [m]: layout }); write(d); },
+    async sendChat(c) { const d = read(); const m = Object.assign({ id: uid(), created_at: new Date().toISOString() }, c); d.chat.push(m); d.chat = d.chat.slice(-200); write(d); if (h) h.chat(m); },
+    async chatSince() { return []; },
+    async chatBefore() { return []; },
+    live(handlers) { h = handlers; },
+    sendMove() {}, retrack() {}
+  };
+}
+function makeRemote() {
+  const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  const chk = (r) => { if (r.error) throw r.error; return r; };
+  return {
+    mode: "remote",
+    async load() {
+      const [t, m] = await Promise.all([sb.from("dg_tasks").select("*").order("created_at"), sb.from("dg_members").select("*")]);
+      chk(t); chk(m);
+      const routes = {}; m.data.forEach((r) => { routes[r.member] = r.route; });
+      return { tasks: t.data, routes };
+    },
+    async add(t) { chk(await sb.from("dg_tasks").insert(t)); },
+    async update(id, p) { chk(await sb.from("dg_tasks").update(p).eq("id", id)); },
+    async remove(id) { chk(await sb.from("dg_tasks").delete().eq("id", id)); },
+    async setRoute(m, r) { chk(await sb.from("dg_members").upsert({ member: m, route: r })); },
+    async loadSkills() { const since = new Date(Date.now() - 14 * 864e5).toISOString(); const r = await sb.from("dg_skills").select("*").gte("created_at", since).order("id"); return r.error ? [] : r.data; },
+    async castSkill(c) { const r = chk(await sb.from("dg_skills").insert(c).select().single()); return r.data; },
+    async loadRooms() { const r = await sb.from("dg_rooms").select("*"); if (r.error) return {}; const o = {}; r.data.forEach((x) => { o[x.member] = x.layout; }); return o; },
+    async saveRoom(m, layout) { chk(await sb.from("dg_rooms").upsert({ member: m, layout, updated_at: new Date().toISOString() })); },
+    async loadChat() { const r = chk(await sb.from("dg_chat").select("*").order("id", { ascending: false }).limit(200)); return r.data.reverse(); },
+    async chatBefore(id) { const r = await sb.from("dg_chat").select("*").lt("id", id).order("id", { ascending: false }).limit(100); return r.error ? [] : r.data.reverse(); },
+    async sendChat(c) { const r = chk(await sb.from("dg_chat").insert(c).select().single()); return r.data; },
+    async chatSince(id) { const r = await sb.from("dg_chat").select("*").gt("id", id).order("id").limit(50); return r.error ? [] : r.data; },
+    live(h) {
+      const ch = sb.channel("dreamguild-village", { config: { private: true, presence: { key: S.me }, broadcast: { self: false } } });
+      this._ch = ch;
+      ch.on("presence", { event: "sync" }, () => { const st = ch.presenceState(); h.presence(Object.keys(st).map((k) => ({ id: k, f: (st[k][0] || {}).f }))); })
+        .on("broadcast", { event: "desk-move" }, ({ payload }) => h.move(payload))
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "dg_chat" }, (p) => h.chat(p.new))
+        .on("postgres_changes", { event: "*", schema: "public", table: "dg_tasks" }, () => h.data())
+        .on("postgres_changes", { event: "*", schema: "public", table: "dg_members" }, () => h.data())
+        .on("postgres_changes", { event: "*", schema: "public", table: "dg_rooms" }, () => h.data())
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "dg_skills" }, () => h.data())
+        .subscribe(async (status, err) => {
+          if (status === "SUBSCRIBED") { await ch.track({ desk: true, f: myF() }); if (this._warned) toast("실시간 연결이 다시 이어졌어요."); this._warned = false; }
+          else if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && !this._warned) { this._warned = true; console.warn("realtime", status, err); toast("실시간 연결이 잠시 끊겼어요. 채팅과 할 일은 몇 초마다 다시 확인할게요."); }
+        });
+    },
+    sendMove(p) { if (this._ch) this._ch.send({ type: "broadcast", event: "desk-move", payload: p }); },
+    retrack() { if (this._ch) this._ch.track({ desk: true, f: myF() }); }
+  };
+}
+
+/* ---------- 상태 ---------- */
+const S = { tasks: [], routes: {}, chat: [], skills: [], week: mondayOf(new Date()), me: null, card: null, say: false, size: "M", draft: "", online: new Set(), bubbles: {}, hover: null, off: 40 };
+try { S.me = localStorage.getItem("dreamguild-me"); if (!byId(S.me)) S.me = null; } catch (e) {}
+try { const o = parseInt(localStorage.getItem("dg-offset"), 10); if (!isNaN(o)) S.off = o; } catch (e) {}
+let store;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const xpOf = (id) => S.tasks.filter((t) => t.member === id && t.done).reduce((a, t) => a + (XP[t.size] || 0), 0);
+const weekTasks = (id, wk) => S.tasks.filter((t) => t.member === id && t.week === ymd(wk || S.week));
+const thisWeek = () => mondayOf(new Date());
+const asleep = (id) => store && store.mode === "remote" && id !== S.me && !S.online.has(id);
+
+/* ---------- 클릭 통과: 캐릭터·카드 위에서만 마우스를 받아요 ---------- */
+let clickable = false, dragging = null;
+function setClickable(on) { if (on !== clickable) { clickable = on; D.setClickable(on); } }
+document.addEventListener("mousemove", (e) => {
+  if (dragging) { setClickable(true); return; }
+  const t = document.elementFromPoint(e.clientX, e.clientY);
+  setClickable(!!(t && t.closest(".hit")));
+});
+document.addEventListener("mouseleave", () => { if (!dragging) setClickable(false); });
+
+function toast(msg, lv) {
+  const box = document.getElementById("toasts"), el = document.createElement("div");
+  el.className = "toast" + (lv ? " lv" : ""); el.textContent = msg; box.appendChild(el);
+  setTimeout(() => el.remove(), lv ? 6000 : 4200);
+  while (box.children.length > 4) box.firstChild.remove();
+}
+
+/* ---------- 캐릭터 줄 ---------- */
+const row = document.getElementById("row");
+const PAL = {};
+const SLOT = 88, FIREW = 70, CTRLW = 74, ROWW = MEMBERS.length * SLOT + FIREW + CTRLW;
+const POS = {}; MEMBERS.forEach((m) => { POS[m.id] = { f: null }; });
+function myF() { return S.me ? POS[S.me].f : null; }
+try { const f = parseFloat(localStorage.getItem("dg-myf")); if (!isNaN(f) && S.me) POS[S.me].f = f; } catch (e) {}
+const rowLeft = () => window.innerWidth - S.off - ROWW;
+const homeX = (i) => rowLeft() + i * SLOT + SLOT / 2;
+const palX = (id, i) => POS[id].f != null ? POS[id].f * window.innerWidth : homeX(i);
+function buildRow() {
+  row.innerHTML = '<div class="ground" id="ground" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>';
+  MEMBERS.forEach((m) => {
+    const el = document.createElement("div");
+    el.className = "pal hit"; el.dataset.pal = m.id; el.tabIndex = 0;
+    el.setAttribute("role", "button"); el.setAttribute("aria-label", m.name + " 님 할 일 보기");
+    el.innerHTML = '<span class="tag"></span><span class="bars" aria-hidden="true"><i class="hp"><b></b><em></em></i><i class="mp"><b></b></i></span><img class="spr" alt="" src="' + IMG(m.id) + '">';
+    el.addEventListener("mouseenter", () => { S.hover = m.id; paintBubble(m.id); });
+    el.addEventListener("mouseleave", () => { if (S.hover === m.id) S.hover = null; paintBubble(m.id); });
+    row.appendChild(el); PAL[m.id] = el;
+  });
+  const f = document.createElement("div");
+  f.className = "fire hit"; f.id = "fire"; f.setAttribute("role", "button"); f.tabIndex = 0;
+  f.setAttribute("aria-label", "팀 캠프파이어 — 클릭하면 팀 소식, 끌면 위치를 옮겨요");
+  f.innerHTML = '<svg id="fireSvg" width="56" height="64" viewBox="0 0 24 28" aria-hidden="true"><g class="flame"><path d="M12 24c3.6 0 6.3-2.5 6.3-6 0-3-2-5-3.4-6.8-.4 1.4-1.2 2.5-2.3 3C12.8 10.8 11.6 8 9.3 5.6c.3 3-1.3 4.7-2.7 6.5C5.5 13.6 5.7 15.2 5.7 18c0 3.5 2.7 6 6.3 6z" fill="#F2A03A" stroke="#B8452F" stroke-width="1.2"/><path d="M12 24c-1.7 0-2.9-1.2-2.9-2.8 0-1.5 1.1-2.4 1.8-3.4.3.9.8 1.4 1.4 1.6.2-1.2.8-2.1 1.6-2.8.3 1.7.9 2.7.9 4.6 0 1.6-1.2 2.8-2.8 2.8z" fill="#FCE38A"/></g><path d="M3 27l18-3M3 24l18 3" stroke="#6E4424" stroke-width="2" stroke-linecap="round"/></svg><span class="meter"><i id="fireMeter"></i></span>';
+  f.addEventListener("mouseenter", () => showFireTip(true));
+  f.addEventListener("mouseleave", () => showFireTip(false));
+  f.addEventListener("pointerdown", (e) => { dragging = { x: e.screenX, off: S.off, moved: false }; f.setPointerCapture(e.pointerId); });
+  f.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.screenX - dragging.x; if (Math.abs(dx) > 4) dragging.moved = true;
+    S.off = Math.max(0, Math.min(window.innerWidth - ROWW, dragging.off - dx)); placeRow();
+  });
+  f.addEventListener("pointerup", () => {
+    const wasDrag = dragging && dragging.moved; dragging = null;
+    try { localStorage.setItem("dg-offset", String(S.off)); } catch (e) {}
+    if (!wasDrag) { if (S.mini) setMini(false); else openCard({ type: "plaza" }); }
+  });
+  row.appendChild(f);
+  const ctrl = document.createElement("div");
+  ctrl.className = "ctrl hit"; ctrl.id = "ctrl";
+  ctrl.innerHTML = '<button type="button" data-act="myroom">🏠 내 방</button><button type="button" data-act="openLog">💬 채팅</button>' + (WEB ? '<button type="button" data-act="openWho">👤 사람</button>' : '<span class="ctrlrow"><button type="button" data-act="minimize" aria-label="최소화" title="최소화">–</button><button type="button" class="quit" data-act="askQuit" aria-label="종료" title="종료">✕</button></span>');
+  row.appendChild(ctrl);
+  placeRow();
+}
+function setMini(on) {
+  S.mini = on; document.body.classList.toggle("mini", on);
+  try { localStorage.setItem("dg-mini", on ? "1" : ""); } catch (e) {}
+  if (on) { if (S.walk) exitWalk(); if (S.say) closeSay(); if (S.card) closeCard(); }
+  const b = document.querySelector('[data-act="mini"]');
+  if (b) { b.textContent = on ? "+" : "–"; b.setAttribute("aria-label", on ? "펼치기" : "최소화"); b.title = on ? "펼치기 (캐릭터 다시 보이기)" : "최소화 (모닥불만 남기기)"; }
+  placeRow();
+}
+function placeRow() {
+  S.off = Math.max(0, Math.min(Math.max(0, window.innerWidth - ROWW), S.off));
+  MEMBERS.forEach((m, i) => { const el = PAL[m.id]; if (el) el.style.left = Math.round(Math.max(42, Math.min(window.innerWidth - 42, palX(m.id, i))) - 42) + "px"; });
+  const fire = document.getElementById("fire"), fx = Math.round(rowLeft() + MEMBERS.length * SLOT);
+  const gr = document.getElementById("ground"); if (gr) { gr.style.left = Math.round(rowLeft() - 16) + "px"; gr.style.width = (ROWW + 32) + "px"; }
+  if (fire) fire.style.left = fx + "px";
+  const ctrl = document.getElementById("ctrl"); if (ctrl) ctrl.style.left = (fx + FIREW + 2) + "px";
+  const c = document.querySelector(".card"); if (c) c.style.right = Math.max(8, S.off) + "px";
+  document.getElementById("toasts").style.right = (c ? Math.max(8, S.off) + c.offsetWidth + 12 : S.off) + "px";
+}
+window.addEventListener("resize", placeRow);
+function showFireTip(on) {
+  const f = document.getElementById("fire"), old = f.querySelector(".bubble"); if (old) old.remove();
+  if (!on) return;
+  const wk = ymd(thisWeek()), txp = S.tasks.filter((t) => t.week === wk && t.done).reduce((a, t) => a + XP[t.size], 0);
+  const b = document.createElement("div"); b.className = "bubble soft";
+  b.innerHTML = "<b>팀 캠프파이어" + (store && store.mode === "local" ? " · 체험 모드" : "") + "</b>" + (S.mini ? "클릭하면 캐릭터들이 다시 나와요" : "이번 주 " + txp + " / " + CONFIG.TEAM_GOAL + " XP<br>클릭: 팀 소식 · 끌기: 위치 옮기기");
+  f.appendChild(b);
+}
+function paintPal(id) {
+  const m = byId(id), el = PAL[id]; if (!el) return;
+  const lv = levelInfo(xpOf(id)).lv, sleep = asleep(id);
+  el.classList.toggle("me", id === S.me);
+  el.classList.toggle("sleep", sleep);
+  el.querySelector(".tag").textContent = m.name + " Lv." + lv;
+  const st = statsOf(id), hpb = el.querySelector(".hp b"), mpb = el.querySelector(".mp b"), ratio = st.hp / st.hpMax;
+  if (hpb) { hpb.style.width = Math.round(ratio * 100) + "%"; hpb.style.background = ratio < 0.3 ? "#E07A2F" : "#E05A4F"; }
+  el.classList.toggle("tired", ratio < 0.3 && !sleep);
+  let sw = el.querySelector(".sweat");
+  if (ratio < 0.3 && !sleep && !sw) { sw = document.createElement("span"); sw.className = "sweat"; sw.textContent = "💦"; el.appendChild(sw); }
+  if ((ratio >= 0.3 || sleep) && sw) sw.remove();
+  if (mpb) mpb.style.width = Math.round(st.mp / st.mpMax * 100) + "%";
+  let zz = el.querySelector(".zz");
+  if (sleep && !zz) { zz = document.createElement("span"); zz.className = "zz"; zz.textContent = "z z"; el.appendChild(zz); }
+  if (!sleep && zz) zz.remove();
+  paintBubble(id);
+  paintSay();
+}
+function statusLine(id) {
+  const wt = weekTasks(id, thisWeek()), open = wt.find((t) => !t.done);
+  if (!wt.length) return "이번 주 할 일을 아직 안 적었어요";
+  return open ? open.title + " 하는 중…" : "이번 주 할 일 끝!";
+}
+function paintBubble(id) {
+  const el = PAL[id]; if (!el) return;
+  const b = S.bubbles[id], m = byId(id);
+  if (S.say && id === S.me && !(b && b.until > Date.now())) { const o = el.querySelector(".bubble"); if (o) o.remove(); el._bk = ""; return; }
+  let html = null, soft = false;
+  if (b && b.until > Date.now()) html = esc(b.text);
+  else if (S.hover === id) { soft = true; const lv = levelInfo(xpOf(id)).lv; const st = statsOf(id); html = "<b>" + esc(m.name) + " · " + esc(titleOf(m, lv, S.routes[id])) + (asleep(id) ? " · 자리 비움" : "") + "</b>" + esc(statusLine(id)) + '<span class="statline">❤ ' + st.hp + "/" + st.hpMax + (st.hp / st.hpMax < 0.3 ? ' <i>지쳤어요</i>' : "") + " · 💧 " + st.mp + "/" + st.mpMax + "</span>"; }
+  const cls = "bubble" + (soft ? " soft" : "") + (S.say && id === S.me ? " up" : ""), key = html ? cls + "|" + html : "";
+  if (el._bk === key && (key === "" || el.querySelector(".bubble"))) return; // 같은 말풍선이면 그대로 둬요
+  const old2 = el.querySelector(".bubble"); if (old2) old2.remove();
+  el._bk = key;
+  if (!html) return;
+  const d = document.createElement("div"); d.className = cls; d.innerHTML = html; el.appendChild(d);
+}
+function paintAll() {
+  MEMBERS.forEach((m) => paintPal(m.id));
+  const wk = ymd(thisWeek()), txp = S.tasks.filter((t) => t.week === wk && t.done).reduce((a, t) => a + XP[t.size], 0), k = Math.min(1, txp / CONFIG.TEAM_GOAL);
+  const svg = document.getElementById("fireSvg"); if (svg) { svg.setAttribute("width", Math.round(44 + 22 * k)); svg.setAttribute("height", Math.round(50 + 25 * k)); }
+  const mt = document.getElementById("fireMeter"); if (mt) mt.style.width = Math.round(k * 100) + "%";
+  placeRow();
+}
+/* 살짝 걸어 다니기 */
+setInterval(() => {
+  MEMBERS.forEach((m) => {
+    const el = PAL[m.id]; if (!el || asleep(m.id) || (S.say && m.id === S.me) || (S.walk && m.id === S.me) || S.hover === m.id) return;
+    if (Math.random() < 0.12) {
+      const dx = Math.round((Math.random() - 0.5) * 34);
+      el.classList.add("walk"); el.style.transform = "translateX(" + dx + "px)";
+      clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("walk"), 1800);
+    }
+  });
+}, 1000);
+setInterval(() => { if (store) paintAll(); }, 60000); // HP가 시간에 따라 닳는 걸 1분마다 반영
+setInterval(() => { const now = Date.now(); Object.keys(S.bubbles).forEach((id) => { if (S.bubbles[id].until < now) { delete S.bubbles[id]; paintBubble(id); } }); }, 500);
+
+/* ---------- 방향키로 걷기 ---------- */
+const walkKeys = new Set();
+let lastMoveSend = 0, saveT = null, wasMoving = false;
+/* 내 캐릭터를 클릭하면: 말하기 입력칸이 열리고, 입력칸이 비어 있을 때 ← → 로 걸어요 */
+function enterWalk() {
+  if (!S.me) { openCard("who"); return; }
+  if (S.mini) setMini(false);
+  S.walk = true; S.say = true; PAL[S.me].style.transform = "none";
+  paintBubble(S.me); paintSay();
+}
+function exitWalk(keepFocus) {
+  if (!S.walk && !S.say) return;
+  S.walk = false; S.say = false; walkKeys.clear(); if (S.me) PAL[S.me].classList.remove("walk", "stepping");
+  paintSay(); if (S.me) paintBubble(S.me); store.retrack();
+  if (!keepFocus && !S.card) D.wantFocus(false);
+}
+function goHome() {
+  if (!S.me) return;
+  POS[S.me].f = null; try { localStorage.removeItem("dg-myf"); } catch (e) {}
+  store.sendMove({ id: S.me, f: null }); store.retrack(); placeRow();
+}
+let lastFrame = performance.now();
+function walkLoop(now) {
+  const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
+  if (S.walk && S.me) {
+    const dir = (walkKeys.has("ArrowRight") ? 1 : 0) - (walkKeys.has("ArrowLeft") ? 1 : 0), el = PAL[S.me];
+    if (dir) {
+      const i = MEMBERS.findIndex((m) => m.id === S.me), W = window.innerWidth;
+      const x = Math.max(42, Math.min(W - 42, palX(S.me, i) + dir * 230 * dt));
+      POS[S.me].f = x / W; el.style.left = Math.round(x - 42) + "px";
+      if (!wasMoving) { el.classList.add("walk", "stepping"); wasMoving = true; }
+      if (now - lastMoveSend > 100) { store.sendMove({ id: S.me, f: POS[S.me].f }); lastMoveSend = now; }
+      clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem("dg-myf", String(POS[S.me].f)); } catch (e) {} store.sendMove({ id: S.me, f: POS[S.me].f }); store.retrack(); }, 400);
+    } else if (wasMoving) {
+      el.classList.remove("walk", "stepping"); wasMoving = false; clearTimeout(saveT);
+      try { localStorage.setItem("dg-myf", String(POS[S.me].f)); } catch (e) {}
+      store.sendMove({ id: S.me, f: POS[S.me].f }); store.retrack();
+    }
+  }
+  requestAnimationFrame(walkLoop);
+}
+requestAnimationFrame(walkLoop);
+
+/* ---------- 말풍선 채팅 ---------- */
+function paintSay() {
+  Object.values(PAL).forEach((el) => { const s = el.querySelector(".say"); if (s && (!S.say || el.dataset.pal !== S.me)) s.remove(); });
+  if (!S.say || !S.me) return;
+  const el = PAL[S.me]; if (el.querySelector(".say")) { const i = el.querySelector("#sayIn"); if (i) i.focus(); return; }
+  const f = document.createElement("form"); f.className = "say hit";
+  f.innerHTML = '<label for="sayIn" class="sr">메시지</label><input id="sayIn" maxlength="200" autocomplete="off" placeholder="말하기 (← → 걷기)"><button type="submit">말하기</button>';
+  f.addEventListener("click", (e) => e.stopPropagation());
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const inp = f.querySelector("input"), text = inp.value.trim(); if (!text) return;
+    inp.value = ""; inp.focus();
+    try { const row = await store.sendChat({ member: S.me, text: text.slice(0, 200), kind: "chat" }); if (row) addChat(row); } catch (err) { toast("메시지를 보내지 못했어요."); }
+  });
+  const inp = f.querySelector("input");
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); exitWalk(); return; }
+    if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !inp.value) { e.preventDefault(); walkKeys.add(e.key); }
+  });
+  inp.addEventListener("keyup", (e) => walkKeys.delete(e.key));
+  el.appendChild(f);
+  D.wantFocus(true); inp.focus(); setTimeout(() => { if (S.say) inp.focus(); }, 30);
+}
+function openSay() { enterWalk(); }
+function closeSay(keepFocus) { exitWalk(keepFocus); }
+function addChat(m) {
+  if (S.chat.some((c) => c.id === m.id)) return;
+  S.chat.push(m); S.chat.sort((a, b) => (typeof a.id === "number" && typeof b.id === "number") ? a.id - b.id : String(a.created_at).localeCompare(String(b.created_at))); if (S.chat.length > 1000) S.chat = S.chat.slice(-1000);
+  if (m.kind === "system") { if (m.member !== S.me) toast(m.text); }
+  else if (byId(m.member)) { S.bubbles[m.member] = { text: m.text, until: Date.now() + 8000 }; paintBubble(m.member); }
+  if (S.card && (S.card.type === "plaza" || S.card === "log")) renderCard();
+}
+async function announce(text) { try { const row = await store.sendChat({ member: S.me, text, kind: "system" }); if (row) addChat(row); } catch (e) {} }
+
+/* ---------- 능력치와 스킬 ---------- */
+function statsOf(id) {
+  const lv = levelInfo(xpOf(id)).lv;
+  return { lv, hp: hpNow(id, lv, S.skills), hpMax: maxHP(id, lv), mp: mpNow(id, lv, S.tasks, S.skills, thisWeek()), mpMax: maxMP(id, lv) };
+}
+function floatText(id, text, cls) {
+  const el = PAL[id]; if (!el) return;
+  const f = document.createElement("span"); f.className = "float " + (cls || ""); f.textContent = text;
+  f.style.left = (20 + Math.random() * 30) + "px"; el.appendChild(f); setTimeout(() => f.remove(), 1800);
+}
+function playSkill(l) {
+  const s = skillOf(l.caster, l.skill); if (!s) return;
+  const c = PAL[l.caster]; if (c) { c.classList.remove("cast"); void c.offsetWidth; c.classList.add("cast"); setTimeout(() => c.classList.remove("cast"), 1400); }
+  floatText(l.caster, s.icon + " " + s.name, "sk");
+  skillEffects(l).forEach((e, i) => setTimeout(() => {
+    if (e.hp) floatText(e.to, "❤ +" + e.hp, "hpf");
+    if (e.mp) setTimeout(() => floatText(e.to, "💧 +" + e.mp, "mpf"), 250);
+  }, 350 + i * 120));
+}
+const seenSkills = new Set();
+function announceNewSkills() {
+  const fresh = (S.skills || []).filter((l) => !seenSkills.has(l.id));
+  const first = !announceNewSkills.ready; announceNewSkills.ready = true;
+  fresh.forEach((l) => {
+    seenSkills.add(l.id);
+    if (first || Date.now() - new Date(l.created_at).getTime() > 120000) return;
+    playSkill(l);
+    if (l.caster !== S.me && skillEffects(l).some((e) => e.to === S.me)) { const s = skillOf(l.caster, l.skill); toast(byId(l.caster).name + " 님이 「" + s.name + "」을(를) 보내 주었어요! " + s.icon); }
+  });
+}
+async function castSkill(sid, target) {
+  if (!S.me) return;
+  const s = skillOf(S.me, sid), st = statsOf(S.me); if (!s) return;
+  if (st.lv < s.lv) { toast("Lv." + s.lv + "에 열리는 스킬이에요."); return; }
+  if (usedToday(S.me, sid, S.skills)) { toast("「" + s.name + "」은(는) 오늘 이미 썼어요. 내일 다시 쓸 수 있어요."); return; }
+  if (st.mp < s.cost) { toast("MP가 부족해요. 할 일을 끝내면 MP가 차요. (필요 " + s.cost + ", 지금 " + st.mp + ")"); return; }
+  if (s.target === "one" && (!target || target === S.me)) { S.pickSkill = sid; renderCard(); return; }
+  S.pickSkill = null;
+  try {
+    const row = await store.castSkill({ caster: S.me, target: s.target === "one" ? target : s.target === "self" ? S.me : null, skill: sid });
+    if (row) { S.skills.push(row); seenSkills.add(row.id); playSkill(row); }
+    const who = s.target === "team" ? "팀 전체" : s.target === "self" ? "자신" : byId(target).name + " 님";
+    const eff = (s.hp ? "HP +" + Math.round(s.hp * (S.me === "seonhan" ? 1.5 : 1)) + " 회복" : "") + (s.hp && s.mp ? ", " : "") + (s.mp ? "MP +" + s.mp : "");
+    announce(byId(S.me).name + " 님이 " + who + "에게 「" + s.name + "」 " + s.icon + " (" + eff + ")");
+    if (sid === "gift") toast(byId(target).name + " 님 방 꾸미기에 「진아의 선물 그림」이 생겼어요!");
+  } catch (e) { toast("스킬을 쓰지 못했어요. 잠시 후 다시 해 주세요."); }
+  await reload(true);
+}
+function statPanel(id, mine) {
+  const st = statsOf(id), m = byId(id), pas = PASSIVES[id], me = S.me && byId(S.me);
+  const skills = (SKILLS[id] || []).map((s) => {
+    const locked = st.lv < s.lv, used = usedToday(id, s.id, S.skills), tgt = { one: "동료 1명", team: "팀 전체", self: "나" }[s.target];
+    let btn = "";
+    if (mine) btn = locked ? '<span class="lock">Lv.' + s.lv + "에 열려요</span>" : used ? '<span class="lock">오늘 사용함</span>' : '<button class="primary sm" data-skill="' + s.id + '"' + (st.mp < s.cost ? " disabled" : "") + ">사용 · MP " + s.cost + "</button>";
+    else if (locked) btn = '<span class="lock">Lv.' + s.lv + "</span>";
+    return '<li class="' + (locked ? "locked" : "") + '"><span class="ic">' + s.icon + "</span><span class=\"sd\"><b>" + esc(s.name) + '</b> <span class="muted" style="margin:0">' + tgt + " · MP " + s.cost + "</span><br>" + esc(s.desc) + "</span>" + btn + "</li>";
+  }).join("");
+  let picker = "";
+  if (mine && S.pickSkill) {
+    const s = skillOf(id, S.pickSkill);
+    picker = '<div class="picker"><p class="muted" style="margin:0 0 6px">「' + esc(s.name) + "」을(를) 누구에게 보낼까요?</p>" + MEMBERS.filter((x) => x.id !== id).map((x) => '<button class="ghost" data-skilltarget="' + x.id + '"><img src="' + IMG(x.id) + '" alt="">' + esc(x.name) + "</button>").join("") + '<button class="ghost" data-act="cancelPick">취소</button></div>';
+  }
+  let give = "";
+  if (!mine && me) {
+    const mst = statsOf(S.me);
+    const mySkills = (SKILLS[S.me] || []).filter((s) => s.target === "one" && mst.lv >= s.lv);
+    if (mySkills.length) give = '<div class="give"><span class="muted" style="margin:0">' + esc(m.name) + " 님에게</span>" + mySkills.map((s) => { const used = usedToday(S.me, s.id, S.skills); return '<button class="primary sm" data-skill="' + s.id + '" data-to="' + id + '"' + (used || mst.mp < s.cost ? " disabled" : "") + ">" + s.icon + " " + esc(s.name) + (used ? " (오늘 씀)" : " · MP " + s.cost) + "</button>"; }).join("") + '<span class="muted" style="margin:0">내 MP ' + mst.mp + "</span></div>";
+  }
+  return '<div class="stats"><div class="statbar"><span>❤ HP</span><i class="hpbar"><b style="width:' + Math.round(st.hp / st.hpMax * 100) + "%" + (st.hp / st.hpMax < 0.3 ? ";background:#E07A2F" : "") + '"></b></i><span class="num">' + st.hp + " / " + st.hpMax + (st.hp / st.hpMax < 0.3 ? ' <em>지침</em>' : "") + "</span></div>" +
+    '<p class="muted" style="margin:0 0 4px 54px;font-size:11px">평일 9시에 가득 차서 6시까지 천천히 닳아요. 동료의 회복 스킬로 다시 차요.</p>' +
+    '<div class="statbar"><span>💧 MP</span><i class="mpbar"><b style="width:' + Math.round(st.mp / st.mpMax * 100) + '%"></b></i><span class="num">' + st.mp + " / " + st.mpMax + "</span></div>" +
+    '<p class="passive"><b>고유 효과 · ' + esc(pas.name) + "</b> " + esc(pas.desc) + "</p>" +
+    "<h3>고유 스킬</h3><ul class=\"skills\">" + skills + "</ul>" + picker + give + "</div>";
+}
+
+/* ---------- 각자의 방 ---------- */
+function layoutOf(id) { const L = (S.edit && S.edit.id === id) ? S.edit.layout : (S.rooms && S.rooms[id]); return L && L.items ? L : defaultLayout(); }
+function roomHTML(id, edit) {
+  const L = layoutOf(id), lv = levelInfo(xpOf(id)).lv;
+  const wall = WALLS.find((w) => w.id === L.wall) || WALLS[0], floor = FLOORS.find((f) => f.id === L.floor) || FLOORS[0];
+  const placed = L.items.map((p) => ({ p, it: itemById(p.id) })).filter((o) => o.it && (!o.it.cls || o.it.cls === id) && (!o.it.gift || hasGift(id, o.it.gift)) && o.it.lv <= lv);
+  const rank = (o) => (o.it.place === "rug" ? 0 : o.it.place === "wall" ? 1 : 2) * 1000 + o.p.y;
+  placed.sort((a, b) => rank(a) - rank(b));
+  const me = L.me || { x: 52, y: 99 };
+  return '<div class="room' + (edit ? " edit" : "") + '" data-room="' + id + '">' +
+    '<div class="wall" style="background:' + wall.css + '"></div><div class="floor" style="background:' + floor.css + '"></div>' +
+    '<div class="window" aria-hidden="true"><i></i></div>' +
+    placed.map((o) => '<div class="it ' + o.it.place + '" data-item="' + o.it.id + '" title="' + esc(o.it.name) + '" style="left:' + o.p.x + "%;top:" + o.p.y + "%;width:" + o.it.w + "px;height:" + o.it.h + 'px">' + itemSvg(o.it, id) + "</div>").join("") +
+    '<img class="roomspr' + (edit ? " movable" : "") + '" data-item="__me" src="' + IMG(id) + '" alt="" style="left:' + me.x + "%;top:" + me.y + '%">' +
+    (edit ? '<span class="roomhint">가구를 끌어서 옮겨요</span>' : "") + "</div>";
+}
+function decorPanel(id, lv) {
+  const L = S.edit.layout, on = new Set(L.items.map((p) => p.id));
+  const sw = (list, key) => list.map((w) => { const locked = w.lv > lv; return '<button type="button" class="sw' + (L[key] === w.id ? " on" : "") + '" ' + (locked ? "disabled" : 'data-' + key + '="' + w.id + '"') + ' title="' + esc(w.name) + (locked ? " · Lv." + w.lv + "에 열려요" : "") + '"><i style="background:' + w.css + '"></i>' + (locked ? "<em>Lv." + w.lv + "</em>" : "") + "</button>"; }).join("");
+  const items = itemsFor(id).slice().sort((a, b) => a.lv - b.lv).map((it) => { const locked = it.lv > lv;
+    return '<button type="button" class="chip' + (on.has(it.id) ? " on" : "") + (it.cls ? " special" : "") + '" ' + (locked ? "disabled" : 'data-toggleitem="' + it.id + '"') + ">" +
+      '<span class="mini">' + itemSvg(it, id) + "</span><span>" + esc(it.name) + "</span>" + (locked ? "<em>Lv." + it.lv + "</em>" : "") + "</button>"; }).join("");
+  return '<div class="decor"><h3>벽지</h3><div class="swatches">' + sw(WALLS, "wall") + '</div><h3>바닥</h3><div class="swatches">' + sw(FLOORS, "floor") + "</div>" +
+    '<h3>가구 <span class="muted" style="font-family:var(--body)">누르면 놓이고, 다시 누르면 치워요</span></h3><div class="chips">' + items + "</div>" +
+    '<div style="display:flex;gap:6px;margin-top:12px"><button class="primary" data-act="saveRoom">이대로 저장</button><button class="ghost" data-act="cancelDecor">취소</button></div></div>';
+}
+function startDecor() {
+  const cur = layoutOf(S.me);
+  S.edit = { id: S.me, layout: JSON.parse(JSON.stringify(cur)) };
+  renderCard();
+}
+/* 가구 끌기 */
+let roomDrag = null;
+document.addEventListener("pointerdown", (e) => {
+  const el = e.target.closest(".room.edit [data-item]"); if (!el) return;
+  e.preventDefault();
+  const room = el.closest(".room"); roomDrag = { el, id: el.dataset.item, rect: room.getBoundingClientRect() };
+  el.setPointerCapture(e.pointerId); el.classList.add("drag");
+});
+document.addEventListener("pointermove", (e) => {
+  if (!roomDrag) return;
+  const { el, id, rect } = roomDrag, it = id === "__me" ? { place: "floor" } : itemById(id);
+  let x = (e.clientX - rect.left) / rect.width * 100, y = (e.clientY - rect.top) / rect.height * 100 + (id === "__me" ? 30 : (it.h / ROOM_H * 100) / 2);
+  const wallMax = WALL_H / ROOM_H * 100;
+  x = Math.max(4, Math.min(96, x));
+  y = it.place === "wall" ? Math.max(14, Math.min(wallMax - 2, y)) : Math.max(wallMax + 6, Math.min(100, y));
+  el.style.left = x + "%"; el.style.top = y + "%"; roomDrag.x = x; roomDrag.y = y;
+});
+document.addEventListener("pointerup", () => {
+  if (!roomDrag) return;
+  const { el, id, x, y } = roomDrag; el.classList.remove("drag"); roomDrag = null;
+  if (x == null || !S.edit) return;
+  const L = S.edit.layout;
+  if (id === "__me") L.me = { x: Math.round(x), y: Math.round(y) };
+  else { const p = L.items.find((q) => q.id === id); if (p) { p.x = Math.round(x); p.y = Math.round(y); } }
+  renderCard();
+});
+function unlockedBetween(id, a, b) {
+  const inRange = (o) => o.lv > a && o.lv <= b;
+  return itemsFor(id).filter(inRange).map((o) => o.name).concat(WALLS.filter(inRange).map((o) => o.name + " 벽지"), FLOORS.filter(inRange).map((o) => o.name + " 바닥"));
+}
+
+/* ---------- 카드 ---------- */
+function openCard(c) { if (S.walk) exitWalk(true); S.card = c; renderCard(); if (c && c !== "who") D.wantFocus(true); }
+function closeCard() { S.edit = null; S.pickSkill = null; S.card = null; renderCard(); if (!S.say) D.wantFocus(false); }
+function renderCard() {
+  const box = document.getElementById("cards"); let html = "";
+  const c = S.card;
+  if (!S.me && c !== "settings") {
+    html = '<div class="card hit center" role="dialog" aria-label="나는 누구인가요"><p class="big">어서 오세요, 모험가님!</p><p class="muted">누구로 들어갈까요? 이 컴퓨터가 기억해요.</p><div class="pick">' +
+      MEMBERS.map((m) => '<button data-me="' + m.id + '"><img src="' + IMG(m.id) + '" alt=""><b>' + esc(m.name) + '</b><span class="muted" style="margin:0">' + esc(m.cls) + "</span></button>").join("") + "</div></div>";
+  } else if (c === "who") {
+    html = '<div class="card hit center" role="dialog" aria-label="사람 바꾸기"><button class="x" data-act="close" aria-label="닫기">✕</button><p class="big">누구로 바꿀까요?</p><div class="pick">' +
+      MEMBERS.map((m) => '<button data-me="' + m.id + '"><img src="' + IMG(m.id) + '" alt=""><b>' + esc(m.name) + "</b></button>").join("") + "</div></div>";
+  } else if (c === "log") {
+    let lastDay = "";
+    const fmtDay = (iso) => { const d = new Date(iso); return (d.getMonth() + 1) + "월 " + d.getDate() + "일 " + "일월화수목금토"[d.getDay()] + "요일"; };
+    const rows = S.chat.map((x) => {
+      const day = fmtDay(x.created_at), sep = day !== lastDay ? '<li class="day">' + day + "</li>" : ""; lastDay = day;
+      const m = byId(x.member);
+      if (x.kind === "system" || !m) return sep + '<li class="sys">' + esc(x.text) + " <time>" + hhmm(x.created_at) + "</time></li>";
+      return sep + '<li class="' + (x.member === S.me ? "mine" : "") + '"><img src="' + IMG(m.id) + '" alt=""><div><b>' + esc(m.name) + "</b><time>" + hhmm(x.created_at) + "</time><p>" + esc(x.text) + "</p></div></li>";
+    }).join("");
+    html = '<div class="card wide hit" role="dialog" aria-label="채팅 기록"><button class="x" data-act="close" aria-label="닫기">✕</button><p class="big">마을 채팅 기록</p>' +
+      (S.chatEnd ? '<p class="muted">처음 이야기까지 모두 불러왔어요.</p>' : '<button class="ghost" data-act="moreLog" style="margin-top:6px">이전 기록 더 보기</button>') +
+      '<ul class="chatlog">' + (rows || '<li class="sys">아직 이야기가 없어요.</li>') + "</ul>" +
+      '<form class="add" data-form="logsay"><label class="sr" for="logIn">메시지</label><input type="text" id="logIn" maxlength="200" autocomplete="off" placeholder="여기서 바로 말할 수 있어요 (Enter)"><button class="primary" type="submit">보내기</button></form></div>';
+  } else if (c === "quit") {
+    html = '<div class="card hit center" role="dialog" aria-label="종료"><p class="big">오늘은 여기까지 할까요?</p><p class="muted">DREAM GUILD를 끄면 동료들 화면에서 내 캐릭터가 잠들어요.<br>잠깐 숨기기만 하려면 「최소화」를 눌러 주세요.</p>' +
+      '<div style="display:flex;gap:6px;justify-content:center;margin-top:14px"><button class="primary" data-act="quit">끄기</button><button class="ghost" data-act="miniFromQuit">최소화</button><button class="ghost" data-act="close">취소</button></div></div>';
+  } else if (c === "settings") {
+    html = '<div class="card hit" role="dialog" aria-label="팀 연결 설정"><button class="x" data-act="close" aria-label="닫기">✕</button><p class="big">팀 연결 설정</p>' +
+      '<p class="muted">웹 마을과 같은 Supabase 주소와 anon 키를 넣으면, 여섯 명이 같은 기록을 함께 봐요. 팀원 모두 같은 값을 넣어 주세요.</p>' +
+      '<form data-form="settings" style="display:flex;flex-direction:column;gap:8px;margin-top:10px">' +
+      '<label class="muted" for="setUrl">Supabase 주소</label><input class="field" id="setUrl" placeholder="https://xxxx.supabase.co" value="' + esc(CONFIG.SUPABASE_URL) + '">' +
+      '<label class="muted" for="setKey">anon public 키</label><input class="field" id="setKey" placeholder="eyJhbGciOi..." value="' + esc(CONFIG.SUPABASE_ANON_KEY) + '">' +
+      '<label class="muted" for="setGoal">팀 주간 목표 XP</label><input class="field" id="setGoal" type="number" min="50" step="50" value="' + CONFIG.TEAM_GOAL + '">' +
+      '<div style="display:flex;gap:6px;margin-top:4px"><button class="primary" type="submit">저장하고 다시 시작</button><button class="ghost" type="button" data-act="clearConfig">체험 모드로</button></div></form></div>';
+  } else if (c && c.type === "class") {
+    html = '<div class="card hit center" role="dialog" aria-label="전직 선택"><p class="muted">Lv.10 달성 · 2차 전직</p><p class="big">길이 갈라져요. 어느 길로 갈까요?</p><div class="routes">' +
+      ["explorer", "leader", "story"].map((k) => { const r = ROUTES[k]; return '<button data-route="' + k + '"><b>' + r.name + "</b><span>" + r.desc + "</span><span>" + r.titles.join(" → ") + "</span></button>"; }).join("") +
+      '<div class="locked"><b>히든 루트</b><span>동료를 도와주는 보너스 퀘스트를 10번 채우면 열려요</span></div></div></div>';
+  } else if (c && c.type === "plaza") {
+    const wk = ymd(thisWeek()), done = S.tasks.filter((t) => t.week === wk && t.done), txp = done.reduce((a, t) => a + XP[t.size], 0), tp = Math.min(100, Math.round(txp / CONFIG.TEAM_GOAL * 100));
+    const feed = S.chat.slice(-14).reverse();
+    html = '<div class="card hit" role="dialog" aria-label="팀 소식"><button class="x" data-act="close" aria-label="닫기">✕</button><p class="big">팀 캠프파이어</p>' +
+      '<p class="muted">' + weekLabel(thisWeek()).title + " · 팀 경험치 <b>" + txp + "</b> / " + CONFIG.TEAM_GOAL + " XP" + (tp >= 100 ? " · 목표 달성! 금요일 간식 타임" : "") + (store.mode === "local" ? " · 체험 모드" : "") + "</p>" +
+      '<span class="xp" style="height:10px"><i style="width:' + tp + '%;background:#E07A2F"></i></span>' +
+      "<h3>팀원</h3><ul class=\"feed\">" + MEMBERS.map((m) => { const w = weekTasks(m.id, thisWeek()), d = w.filter((t) => t.done).length, lv = levelInfo(xpOf(m.id)).lv;
+        return '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> Lv." + lv + " " + esc(titleOf(m, lv, S.routes[m.id])) + ' <span class="muted">· ' + d + "/" + w.length + (asleep(m.id) ? " · 자리 비움" : "") + "</span></span></li>"; }).join("") + "</ul>" +
+      '<h3>최근 이야기<button class="ghost" data-act="openLog" style="margin-left:auto">전체 기록 보기</button></h3>' +
+      (feed.length ? '<ul class="feed">' + feed.map((x) => { const m = byId(x.member); return x.kind === "system" || !m ? '<li class="sys">· ' + esc(x.text) + "</li>" : '<li><img src="' + IMG(m.id) + '" alt=""><span><b>' + esc(m.name) + "</b> " + esc(x.text) + ' <span class="muted">' + hhmm(x.created_at) + "</span></span></li>"; }).join("") + "</ul>" : '<p class="empty">아직 조용해요. 먼저 인사해 볼까요?</p>') + "</div>";
+  } else if (c && c.type === "person") {
+    const m = byId(c.id), route = S.routes[m.id], info = levelInfo(xpOf(m.id)), nx = nextStep(m, info.lv, route);
+    const mine = m.id === S.me, wt = weekTasks(m.id), wl = weekLabel(S.week), edit = S.edit && S.edit.id === m.id;
+    const stops = [1, 5, 10, 15, 20].map((l) => { let t = titleOf(m, l, route); if (m.id === "eunhwan" && !route && l >= 10) t = l === 10 ? "2차 전직 · 세 갈래 길" : "???"; return '<li class="' + (info.lv >= l ? "on" : "") + '"><i></i><small>Lv.' + l + "</small>" + esc(t) + "</li>"; }).join("");
+    html = '<div class="card wide hit" role="dialog" aria-label="' + esc(m.name) + ' 님의 방"><button class="x" data-act="close" aria-label="닫기">✕</button>' +
+      '<p class="roomtitle"><span class="cls">' + esc(m.place) + '</span> <b class="big" style="font-size:19px">' + esc(titleOf(m, info.lv, route)) + "</b></p>" +
+      roomHTML(m.id, edit) +
+      (edit ? decorPanel(m.id, info.lv) :
+        '<div class="rowline"><p class="muted" style="margin:0;flex:1">' + esc(m.name) + " · " + esc(m.cls) + " · Lv." + info.lv + " · " + (info.lv < 20 ? info.into + " / " + info.need + " XP" : "만렙") + (nx ? " · 다음 Lv." + nx.lv + " " + esc(nx.title) : "") + "</p>" +
+        (mine ? '<button class="ghost" data-act="decor">방 꾸미기</button>' : "") + "</div>" +
+        '<span class="xp"><i style="width:' + info.pct + '%"></i></span>' +
+        statPanel(m.id, mine) +
+        '<h3>할 일<span class="wk"><button data-act="prev" aria-label="지난주">◀</button>' + wl.title + '<button data-act="next" aria-label="다음 주">▶</button></span></h3>' +
+        (wt.length ? '<ul class="tasks">' + wt.map((t) => '<li class="task' + (t.done ? " done" : "") + '">' +
+          (mine ? '<label><input type="checkbox" data-toggle="' + esc(t.id) + '"' + (t.done ? " checked" : "") + '><span class="sz ' + t.size + '">' + t.size + '</span><span class="tt">' + esc(t.title) + "</span></label>"
+                : '<span class="sz ' + t.size + '">' + t.size + '</span><span class="tt" style="flex:1">' + (t.done ? "✓ " : "") + esc(t.title) + "</span>") +
+          '<span class="pts">+' + XP[t.size] + "</span>" + (mine ? '<button class="del" data-del="' + esc(t.id) + '" aria-label="삭제">✕</button>' : "") + "</li>").join("") + "</ul>"
+          : '<p class="empty">' + (mine ? "이번 주에 할 일을 적어 볼까요?" : "아직 할 일이 없어요.") + "</p>") +
+        (mine ? '<form class="add" data-form="add"><label class="sr" for="newTask">새 할 일</label><input type="text" id="newTask" maxlength="60" placeholder="예: 쇼츠 1편 편집" value="' + esc(S.draft) + '">' +
+          '<div class="seg" role="group" aria-label="크기">' + ["S", "M", "L"].map((z) => '<button type="button" data-size="' + z + '" aria-pressed="' + (S.size === z) + '">' + z + "·" + XP[z] + "</button>").join("") + "</div>" +
+          '<button class="primary" type="submit">추가</button></form>' : '<p class="note">다른 사람의 할 일은 볼 수만 있어요. 방 구경은 마음껏!</p>') +
+        '<h3>꿈 로드맵</h3><ol class="road">' + stops + "</ol>" +
+        "") + "</div>";
+  }
+  const prev = box.querySelector(".card"), prevScroll = prev ? prev.scrollTop : 0, prevLog = box.querySelector(".chatlog"), logAtBottom = prevLog ? prevLog.scrollHeight - prevLog.scrollTop - prevLog.clientHeight < 30 : true, logScroll = prevLog ? prevLog.scrollTop : 0, sameKind = renderCard._k === JSON.stringify(c);
+  const sayVal = document.getElementById("logIn") ? document.getElementById("logIn").value : null;
+  box.innerHTML = html; renderCard._k = JSON.stringify(c);
+  const card = box.querySelector(".card");
+  if (card && sameKind) card.scrollTop = prevScroll;
+  const lg = box.querySelector(".chatlog"); if (lg) lg.scrollTop = (sameKind && !logAtBottom) ? logScroll : lg.scrollHeight;
+  const li = document.getElementById("logIn"); if (li) { if (sayVal !== null) li.value = sayVal; if (S.focusLog) { li.focus(); S.focusLog = false; } }
+  if (card) { card.style.right = Math.max(8, S.off) + "px"; card.style.bottom = "140px"; }
+  const tb = document.getElementById("toasts");
+  tb.style.bottom = "150px"; tb.style.right = (card ? Math.max(8, S.off) + card.offsetWidth + 12 : S.off) + "px";
+  const inp = document.getElementById("newTask"); if (inp && S.focusInput) { inp.focus(); S.focusInput = false; }
+}
+
+/* ---------- 데이터 ---------- */
+let lastSig = "", loadFailToast = 0;
+async function reload(force) {
+  try { const d = await store.load(); S.tasks = d.tasks || []; S.routes = d.routes || {}; S.rooms = await store.loadRooms(); S.skills = await store.loadSkills(); }
+  catch (e) { if (Date.now() - loadFailToast > 60000) { loadFailToast = Date.now(); toast("팀 기록을 불러오지 못했어요. 인터넷이나 연결 설정을 확인해 주세요."); } return; }
+  announceNewSkills();
+  const sig = JSON.stringify([S.tasks, S.routes, S.rooms, S.skills]);
+  if (!force && sig === lastSig) return; // 바뀐 게 없으면 다시 그리지 않아요 (깜빡임 방지)
+  lastSig = sig;
+  if (document.activeElement && document.activeElement.id === "newTask") S.focusInput = true;
+  paintAll();
+  if (S.card && S.card !== "settings" && S.card !== "quit" && !S.edit && !roomDrag) renderCard();
+}
+async function act(fn) { try { await fn(); } catch (e) { toast("저장하지 못했어요. 잠시 후 다시 해 주세요."); } await reload(true); }
+async function toggleTask(id, done) {
+  const t = S.tasks.find((x) => x.id === id); if (!t) return;
+  const m = byId(t.member), before = levelInfo(xpOf(m.id)).lv;
+  await act(() => store.update(id, { done, done_at: done ? new Date().toISOString() : null }));
+  const after = levelInfo(xpOf(m.id)).lv;
+  if (done) {
+    announce(m.name + " 님이 「" + t.title + "」 완료! +" + XP[t.size] + " XP");
+    const el = PAL[m.id]; el.classList.remove("jump"); void el.offsetWidth; el.classList.add("jump"); setTimeout(() => el.classList.remove("jump"), 1600);
+  }
+  if (done && after > before) {
+    const title = titleOf(m, after, S.routes[m.id]);
+    announce(m.name + " 님이 Lv." + after + " 「" + title + "」이(가) 되었어요!");
+    toast("LEVEL UP! Lv." + after + " " + title, true);
+    const un = unlockedBetween(m.id, before, after);
+    if (un.length) toast("새로 열렸어요: " + un.join(", ") + " — 방 꾸미기에서 써 보세요!");
+    toast(eventOf(m, after, S.routes[m.id]));
+    if (m.id === "eunhwan" && before < 10 && after >= 10 && !S.routes.eunhwan) openCard({ type: "class" });
+  }
+}
+
+/* ---------- 입력 ---------- */
+document.addEventListener("click", async (e) => {
+  const pal = e.target.closest("[data-pal]");
+  if (pal && !e.target.closest(".say")) { const id = pal.dataset.pal; if (id === S.me) { if (S.say) exitWalk(); else enterWalk(); return; } if (S.say) exitWalk(true); if (S.card && S.card.type === "person" && S.card.id === id) closeCard(); else { S.week = thisWeek(); openCard({ type: "person", id }); } return; }
+  const dz = e.target.closest("[data-wall],[data-floor],[data-toggleitem]");
+  if (dz && S.edit) {
+    const L = S.edit.layout;
+    if (dz.dataset.wall) L.wall = dz.dataset.wall;
+    else if (dz.dataset.floor) L.floor = dz.dataset.floor;
+    else { const id = dz.dataset.toggleitem, i = L.items.findIndex((p) => p.id === id); if (i >= 0) L.items.splice(i, 1); else { const it = itemById(id); L.items.push({ id, x: it.x, y: it.y }); } }
+    renderCard(); return;
+  }
+  const sk = e.target.closest("[data-skill],[data-skilltarget]");
+  if (sk) { if (sk.dataset.skilltarget) { const sid = S.pickSkill; S.pickSkill = null; castSkill(sid, sk.dataset.skilltarget); } else castSkill(sk.dataset.skill, sk.dataset.to); return; }
+  const el = e.target.closest("[data-act],[data-me],[data-size],[data-del],[data-route]"); if (!el) return;
+  const a = el.dataset.act;
+  if (a === "close") closeCard();
+  else if (a === "mini") setMini(!S.mini);
+  else if (a === "decor") startDecor();
+  else if (a === "cancelPick") { S.pickSkill = null; renderCard(); }
+  else if (a === "openLog") { if (S.say) exitWalk(true); if (S.card === "log") closeCard(); else { S.focusLog = true; openCard("log"); } }
+  else if (a === "moreLog") { const nums = S.chat.map((x) => x.id).filter((x) => typeof x === "number"); const more = nums.length ? await store.chatBefore(Math.min(...nums)) : []; if (!more.length) S.chatEnd = true; more.forEach((x) => { if (!S.chat.some((y) => y.id === x.id)) S.chat.push(x); }); S.chat.sort((p, q) => p.id - q.id); renderCard._k = ""; renderCard(); const lg = document.querySelector(".chatlog"); if (lg) lg.scrollTop = 0; }
+  else if (a === "cancelDecor") { S.edit = null; renderCard(); }
+  else if (a === "saveRoom") { const L = S.edit.layout; S.edit = null; S.rooms = Object.assign({}, S.rooms, { [S.me]: L }); renderCard(); try { await store.saveRoom(S.me, L); toast("방을 저장했어요. 동료들이 놀러 오면 볼 수 있어요!"); } catch (err) { toast("방을 저장하지 못했어요. setup.sql을 다시 실행했는지 확인해 주세요."); } }
+  else if (a === "myroom") { if (!S.me) { openCard("who"); return; } if (S.say) exitWalk(true); if (S.card && S.card.type === "person" && S.card.id === S.me) closeCard(); else { S.week = thisWeek(); openCard({ type: "person", id: S.me }); } }
+  else if (a === "minimize") { if (S.walk) exitWalk(); if (S.say) closeSay(); D.minimize(); }
+  else if (a === "miniFromQuit") { closeCard(); setMini(true); }
+  else if (a === "askQuit") openCard("quit");
+  else if (a === "openWho") { if (S.card === "who") closeCard(); else openCard("who"); }
+  else if (a === "quit") D.quit();
+  else if (a === "prev") { S.week = addDays(S.week, -7); renderCard(); }
+  else if (a === "next") { S.week = addDays(S.week, 7); renderCard(); }
+  else if (a === "say") { closeCard(); openSay(); }
+  else if (a === "clearConfig") { try { localStorage.removeItem("dg-config"); } catch (err) {} location.reload(); }
+  else if (el.dataset.me) {
+    const prev = S.me; S.me = el.dataset.me;
+    try { localStorage.setItem("dreamguild-me", S.me); } catch (err) {}
+    if (prev && prev !== S.me && store.mode === "remote") { location.reload(); return; }
+    if (!prev) startLive();
+    closeCard(); paintAll(); toast(byId(S.me).name + " 님, 반가워요! 내 캐릭터를 누르면 말하고 걸을 수 있어요.");
+  }
+  else if (el.dataset.size) { S.size = el.dataset.size; const i = document.getElementById("newTask"); if (i) S.draft = i.value; renderCard(); }
+  else if (el.dataset.del) await act(() => store.remove(el.dataset.del));
+  else if (el.dataset.route) { const r = el.dataset.route; await act(() => store.setRoute("eunhwan", r)); closeCard(); toast("전직 완료! " + ROUTES[r].titles[0], true); announce("은환 님이 「" + ROUTES[r].name + "」로 전직했어요!"); }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.classList && e.target.classList.contains("pal")) { e.target.click(); return; }
+  if (e.key === "Escape") { if (S.card && S.me) closeCard(); else if (S.say) exitWalk(); }
+});
+document.addEventListener("keyup", (e) => walkKeys.delete(e.key));
+document.addEventListener("change", (e) => { if (e.target.dataset && e.target.dataset.toggle) toggleTask(e.target.dataset.toggle, e.target.checked); });
+document.addEventListener("input", (e) => { if (e.target.id === "newTask") S.draft = e.target.value; });
+document.addEventListener("submit", async (e) => {
+  const f = e.target.dataset && e.target.dataset.form; if (!f) return;
+  e.preventDefault();
+  if (f === "add") {
+    const title = (S.draft || "").trim(); if (!title || !S.me) return;
+    S.draft = ""; S.focusInput = true;
+    await act(() => store.add({ member: S.me, week: ymd(S.week), title: title.slice(0, 60), size: S.size, done: false }));
+  } else if (f === "logsay") {
+    const inp = document.getElementById("logIn"), text = inp.value.trim(); if (!text || !S.me) return;
+    inp.value = ""; S.focusLog = true;
+    try { const row = await store.sendChat({ member: S.me, text: text.slice(0, 200), kind: "chat" }); if (row) addChat(row); } catch (err) { toast("메시지를 보내지 못했어요."); }
+  } else if (f === "settings") {
+    const url = document.getElementById("setUrl").value.trim(), key = document.getElementById("setKey").value.trim(), goal = parseInt(document.getElementById("setGoal").value, 10) || 400;
+    try { localStorage.setItem("dg-config", JSON.stringify({ SUPABASE_URL: url, SUPABASE_ANON_KEY: key, TEAM_GOAL: goal })); } catch (err) {}
+    location.reload();
+  }
+});
+window.addEventListener("blur", () => { walkKeys.clear(); const i = document.getElementById("sayIn"); if (S.say && i && !i.value) exitWalk(true); });
+D.on("open-chat", () => enterWalk());
+D.on("open-log", () => { S.focusLog = true; openCard("log"); });
+D.on("open-walk", () => { if (S.mini) setMini(false); enterWalk(); });
+
+D.on("go-home", goHome);
+D.on("open-mine", () => { if (S.me) { S.week = thisWeek(); openCard({ type: "person", id: S.me }); } else openCard("who"); });
+D.on("open-who", () => openCard("who"));
+D.on("open-settings", () => openCard("settings"));
+
+/* ---------- 시작 ---------- */
+let live = false;
+async function pollChat() {
+  const nums = S.chat.map((c) => c.id).filter((x) => typeof x === "number");
+  const last = nums.length ? Math.max(...nums) : 0;
+  try { (await store.chatSince(last)).forEach(addChat); } catch (e) {}
+}
+function startLive() {
+  if (live || !S.me) return; live = true;
+  if (store.mode === "remote") { setInterval(pollChat, 6000); setInterval(() => reload(), 20000); }
+  store.live({
+    presence: (list) => {
+      S.online = new Set(list.map((p) => p.id));
+      list.forEach((p) => { if (p.id !== S.me && POS[p.id] && p.f !== undefined) POS[p.id].f = (typeof p.f === "number") ? p.f : null; });
+      paintAll();
+    },
+    move: (p) => { if (p && p.id !== S.me && POS[p.id]) { POS[p.id].f = (typeof p.f === "number") ? p.f : null; placeRow(); } },
+    chat: (m) => addChat(m),
+    data: () => reload()
+  });
+}
+(async function init() {
+  buildRow(); paintAll();
+  try { localStorage.removeItem("dg-mini"); localStorage.removeItem("dg-layer"); } catch (e) {}
+  if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY && window.supabase) {
+    try { store = makeRemote(); } catch (e) { store = makeLocal(); toast("팀 연결에 실패해 체험 모드로 열었어요."); }
+  } else store = makeLocal();
+  if (!S.me) renderCard();
+  await reload();
+  try { S.chat = await store.loadChat(); } catch (e) { S.chat = []; }
+  startLive();
+  if (store.mode === "local") setTimeout(() => toast("체험 모드예요. 트레이 아이콘 → 「팀 연결 설정」에서 팀과 연결할 수 있어요."), 1500);
+  lastSig = JSON.stringify([S.tasks, S.routes, S.rooms, S.skills]);
+})();
