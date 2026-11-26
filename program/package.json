@@ -1,0 +1,9 @@
+{
+  "name": "dreamguild-program",
+  "productName": "DreamGuild",
+  "version": "1.0.0",
+  "description": "DREAM GUILD 마을 (윈도우 프로그램)",
+  "main": "main.js",
+  "author": "Paidion 홍보영상팀",
+  "license": "UNLICENSED"
+}

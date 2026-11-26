@@ -423,6 +423,32 @@ html:not(.web) #skychat{display:none}
 @keyframes wiggle{0%,86%,100%{transform:rotate(0)}89%{transform:rotate(-3deg)}93%{transform:rotate(3deg)}96%{transform:rotate(-1.5deg)}}
 @media (prefers-reduced-motion:reduce){#village .vnote{animation:none}}
 
+/* 윈도우 프로그램 모드 — 하늘은 투명(바탕화면이 비쳐요), 직접 만든 제목 줄 */
+html.program{background:transparent!important}
+html.program body{border-radius:14px;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.55),inset 0 0 0 2.5px rgba(40,60,90,.18)}
+html.program.maxed body{border-radius:0}
+#titlebar{position:fixed;left:0;right:0;top:0;height:34px;z-index:20;display:flex;align-items:center;gap:8px;padding:0 0 0 12px;background:rgba(40,52,70,.55);color:#fff;border-radius:14px 14px 0 0;-webkit-app-region:drag;user-select:none;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+html.maxed #titlebar{border-radius:0}
+#titlebar img{height:20px;width:auto}
+#titlebar .tt{font-family:var(--pixel);font-size:13px;letter-spacing:.5px}
+#titlebar .sp{flex:1}
+#titlebar button{-webkit-app-region:no-drag;width:46px;height:34px;border:0;background:transparent;color:#fff;font-size:14px;line-height:1;cursor:pointer}
+#titlebar button:hover{background:rgba(255,255,255,.18)}
+#titlebar button.cl{border-radius:0 14px 0 0}
+html.maxed #titlebar button.cl{border-radius:0}
+#titlebar button.cl:hover{background:#E0533F}
+#grip{position:fixed;right:0;bottom:0;width:18px;height:18px;z-index:21;cursor:nwse-resize;background:linear-gradient(135deg,transparent 0 45%,rgba(255,244,220,.9) 45% 52%,transparent 52% 64%,rgba(255,244,220,.9) 64% 71%,transparent 71% 83%,rgba(255,244,220,.9) 83% 90%,transparent 90%)}
+html.maxed #grip{display:none}
+html.program #sky{top:46px;background:rgba(255,255,255,.78);border-color:rgba(255,255,255,.9)}
+html.program #skychat{top:46px;background:rgba(255,255,255,.8);border-color:rgba(255,255,255,.9)}
+html.program #skychat .sc-head{background:rgba(255,255,255,.6)}
+html.program #village .vboard{text-shadow:0 0 2px #fff,0 0 3px #fff,0 0 5px #fff,1px 1px 0 #fff}
+html.program #village .vboard .vlist ul,html.program #village .vboard .vadd{background:rgba(255,255,255,.55);border-radius:8px;padding:3px 5px}
+html.program #village .vboard .vlist ul:empty{display:none}
+html.program #village .roul-title{background:rgba(255,255,255,.7);border-radius:6px;padding:0 6px}
+html.program .chatbar{border-radius:0 0 14px 14px}
+html.program.maxed .chatbar{border-radius:0}
+
 /* 다른 사람 카드 (간단히) */
 .card.mini-card{width:330px}
 #village .vhouse{display:flex;flex-direction:column;align-items:center;gap:calc(var(--px) * 2)}

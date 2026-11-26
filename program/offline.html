@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>DREAM GUILD</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;font-family:'Malgun Gothic',sans-serif;color:#3B2A1E}
+  .box{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;padding:24px;text-align:center;background:#FBF1DE;border:3px solid #6E4424;border-radius:18px;box-shadow:0 10px 30px rgba(40,25,12,.35)}
+  .bar{position:fixed;left:0;right:0;top:0;height:34px;-webkit-app-region:drag}
+  button{margin:6px 4px 0;height:36px;padding:0 16px;border-radius:10px;border:1.5px solid #4E2E17;background:#E3A63C;font:inherit;font-weight:700;cursor:pointer;-webkit-app-region:no-drag}
+  button.g{background:#FFF8EA}
+</style>
+</head>
+<body>
+<div class="bar"></div>
+<div class="box">
+  <p style="font-size:20px;font-weight:700;margin:0 0 8px">마을에 연결할 수 없어요</p>
+  <p style="margin:0 0 12px;color:#735C47">인터넷 연결을 확인하고 다시 시도해 주세요.</p>
+  <button onclick="deskShell.retry()">다시 시도</button><button class="g" onclick="deskShell.closeNow()">닫기</button>
+</div>
+</body>
+</html>

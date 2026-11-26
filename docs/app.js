@@ -2,6 +2,9 @@
 const D = window.desk || { setClickable() {}, wantFocus() {}, on() {}, quit() { window.__quit = true; }, minimize() { window.__min = true; }, platform: "web" };
 const WEB = D.platform === "web";
 if (WEB) document.documentElement.classList.add("web");
+/* 윈도우 프로그램(program/) 안에서 열렸을 때: 하늘이 투명하고, 직접 만든 제목 줄과 크기 조절 손잡이가 생겨요 */
+const PROGRAM = WEB && !!window.deskShell;
+if (PROGRAM) document.documentElement.classList.add("program");
 const CONFIG = Object.assign({}, CONFIG_DEFAULT);
 try { const c = JSON.parse(localStorage.getItem("dg-config")); if (c) Object.assign(CONFIG, c); } catch (e) {}
 const IMG = (id) => "assets/" + id + ".png";
@@ -788,6 +791,28 @@ function paintSkyChat() {
   list._h = rows; list.innerHTML = rows;
   if (atBottom || !list._init) { list.scrollTop = list.scrollHeight; list._init = true; }
 }
+
+/* ---------- 윈도우 프로그램용 제목 줄 · 크기 조절 ---------- */
+function buildProgramChrome() {
+  if (!PROGRAM || document.getElementById("titlebar")) return;
+  const ds = window.deskShell;
+  const tb = document.createElement("div"); tb.id = "titlebar";
+  tb.innerHTML = '<img src="assets/appicon.png" alt=""><span class="tt">DREAM GUILD</span><span class="sp"></span>' +
+    '<button type="button" data-win="min" aria-label="최소화" title="최소화">─</button><button type="button" data-win="max" aria-label="크게" title="화면 가득 / 원래 크기">☐</button><button type="button" data-win="close" class="cl" aria-label="닫기" title="닫기">✕</button>';
+  tb.addEventListener("click", (e) => { const b = e.target.closest("[data-win]"); if (!b) return; ({ min: ds.min, max: ds.max, close: ds.close })[b.dataset.win](); });
+  tb.addEventListener("dblclick", (e) => { if (!e.target.closest("button")) ds.max(); });
+  document.body.appendChild(tb);
+  ds.onMaxState((on) => { const b = tb.querySelector('[data-win="max"]'); b.textContent = on ? "❐" : "☐"; document.documentElement.classList.toggle("maxed", on); });
+  // 오른쪽 아래 손잡이로 창 크기 조절 (투명한 창은 윈도우 기본 크기 조절이 불안정해서 직접 만들어요)
+  const grip = document.createElement("div"); grip.id = "grip"; grip.title = "끌어서 창 크기 조절"; document.body.appendChild(grip);
+  let rs = null, raf = 0;
+  grip.addEventListener("pointerdown", (e) => { e.preventDefault(); grip.setPointerCapture(e.pointerId); rs = { x: e.screenX, y: e.screenY, w: window.outerWidth, h: window.outerHeight }; });
+  grip.addEventListener("pointermove", (e) => { if (!rs) return; const w = rs.w + e.screenX - rs.x, h = rs.h + e.screenY - rs.y; cancelAnimationFrame(raf); raf = requestAnimationFrame(() => ds.resize(w, h)); });
+  const end = () => { if (rs) { rs = null; ds.resizeEnd(); } }; grip.addEventListener("pointerup", end); grip.addEventListener("pointercancel", end);
+  // 닫기 전에 마을에 "나갔어요"를 남겨요
+  ds.onBeforeClose(async () => { try { await logLeave(true); } catch (e) {} ds.closeNow(); });
+}
+buildProgramChrome();
 
 /* ---------- 점심 룰렛 (웹: 마을 표지판 위) ---------- */
 const MENUS = ["닭갈비", "쌀국수", "김치찌개", "보리밥", "부대찌개", "돈까스", "마라탕", "분식", "샌드위치", "세무서급식", "햄버거", "중국집", "카레", "콩나물국밥", "순대국", "고양이부엌", "배민"];
